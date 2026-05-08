@@ -24,11 +24,13 @@ No API key needed when used through Claude Code.
 
 ## Install
 
-Run this once inside any repo:
+Run this once inside any repo — no install step needed, `npx` fetches it on demand:
 
 ```bash
 npx git-impact init
 ```
+
+[![npm version](https://img.shields.io/npm/v/git-impact.svg)](https://www.npmjs.com/package/git-impact)
 
 The wizard asks four questions, then self-installs into the repo:
 
@@ -236,9 +238,6 @@ Add to `.claude/settings.json` in your project:
 }
 ```
 
-> Until published to npm, use the local path:
-> `"args": ["/path/to/git-impact/dist/mcp/server.js"]`
-
 Available tools: `get_git_activity`, `get_github_activity`, `save_impact_entry`, `get_history`, `update_context`.
 
 ---
@@ -246,7 +245,7 @@ Available tools: `get_git_activity`, `get_github_activity`, `save_impact_entry`,
 ## Local development
 
 ```bash
-git clone https://github.com/you/git-impact
+git clone https://github.com/efraimnafady/git-impact
 cd git-impact
 npm install
 npm run build
@@ -259,6 +258,14 @@ node dist/cli/index.js today
 
 # Run the MCP server
 node dist/mcp/server.js
+```
+
+Publishing a new version:
+
+```bash
+npm version patch          # bump version
+npm publish --otp=123456   # 6-digit code from your authenticator
+git push --follow-tags
 ```
 
 ---
@@ -294,7 +301,7 @@ skill/
 
 ## Roadmap
 
-- [ ] `npm publish` — so `npx git-impact init` works without cloning
+- [x] `npm publish` — `npx git-impact init` works zero-install
 - [ ] Color output (`chalk`) in CLI mode
 - [ ] `--copy` flag to put output on clipboard
 - [ ] GitHub PR enrichment fully wired into standup output
