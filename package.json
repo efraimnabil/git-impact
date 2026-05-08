@@ -1,0 +1,39 @@
+{
+  "name": "git-impact",
+  "version": "0.1.0",
+  "description": "Translate your git commits into plain-English business impact",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "git-impact": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "mcp": "node dist/mcp/server.js"
+  },
+  "keywords": [
+    "git",
+    "standup",
+    "productivity",
+    "ai",
+    "mcp"
+  ],
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@octokit/rest": "^22.0.1",
+    "better-sqlite3": "^12.9.0",
+    "commander": "^14.0.3",
+    "conf": "^15.1.0",
+    "simple-git": "^3.36.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

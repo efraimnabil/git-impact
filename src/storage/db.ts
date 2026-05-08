@@ -1,0 +1,181 @@
+import Database from "better-sqlite3";
+import * as path from "path";
+import * as fs from "fs";
+
+// ─── Per-repo layout ──────────────────────────────────────────────────────────
+//
+//   <repo-root>/
+//   ├── .git-impact/
+//   │   ├── context.json   ← company desc, glossary, priorities  (commit this)
+//   │   └── history.db     ← SQLite standup history               (gitignored)
+//
+// Two separate files because context is team-shareable; history is per-machine.
+
+const GIT_IMPACT_DIR = ".git-impact";
+const CONTEXT_FILE = "context.json";
+const HISTORY_FILE = "history.db";
+const GITIGNORE_ENTRY = ".git-impact/history.db";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface UserContext {
+  companyDescription: string;
+  managerPriorities: string;
+  glossary: Record<string, string>;
+  githubToken?: string;
+  anthropicApiKey?: string;
+}
+
+export interface ImpactItem {
+  status: "done" | "in_progress";
+  summary: string;
+  impact: string;
+  technical_note?: string;
+}
+
+export interface ImpactEntry {
+  id?: number;
+  date: string;
+  repoPath: string;
+  repoName: string;
+  totalCommits: number;
+  totalFiles: number;
+  filesSummary: string;
+  items: ImpactItem[];
+  rawJson: string;
+  createdAt: string;
+}
+
+// ─── DB (per-repo, cached by repo root) ──────────────────────────────────────
+
+const _dbs = new Map<string, Database.Database>();
+
+function getDb(repoRoot: string): Database.Database {
+  if (_dbs.has(repoRoot)) return _dbs.get(repoRoot)!;
+
+  const dir = gitImpactDir(repoRoot);
+  fs.mkdirSync(dir, { recursive: true });
+  ensureGitignore(repoRoot);
+
+  const db = new Database(path.join(dir, HISTORY_FILE));
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS impact_entries (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      date        TEXT    NOT NULL,
+      repo_path   TEXT    NOT NULL,
+      repo_name   TEXT    NOT NULL,
+      total_commits INTEGER NOT NULL DEFAULT 0,
+      total_files   INTEGER NOT NULL DEFAULT 0,
+      files_summary TEXT    NOT NULL DEFAULT '',
+      items_json    TEXT    NOT NULL DEFAULT '[]',
+      raw_json      TEXT    NOT NULL DEFAULT '{}',
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entries_date ON impact_entries (date);
+    CREATE INDEX IF NOT EXISTS idx_entries_repo ON impact_entries (repo_name);
+  `);
+
+  _dbs.set(repoRoot, db);
+  return db;
+}
+
+// ─── Context (JSON file, committable) ────────────────────────────────────────
+
+export function loadContext(repoRoot: string): UserContext | null {
+  const filePath = path.join(gitImpactDir(repoRoot), CONTEXT_FILE);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as UserContext;
+  } catch {
+    return null;
+  }
+}
+
+export function saveContext(ctx: UserContext, repoRoot: string): void {
+  const dir = gitImpactDir(repoRoot);
+  fs.mkdirSync(dir, { recursive: true });
+  ensureGitignore(repoRoot);
+  fs.writeFileSync(
+    path.join(dir, CONTEXT_FILE),
+    JSON.stringify(ctx, null, 2) + "\n",
+    "utf-8"
+  );
+}
+
+// ─── Entries ──────────────────────────────────────────────────────────────────
+
+export function saveEntry(entry: ImpactEntry, repoRoot: string): number {
+  const db = getDb(repoRoot);
+  const result = db.prepare(`
+    INSERT INTO impact_entries
+      (date, repo_path, repo_name, total_commits, total_files, files_summary, items_json, raw_json, created_at)
+    VALUES
+      (@date, @repoPath, @repoName, @totalCommits, @totalFiles, @filesSummary, @itemsJson, @rawJson, @createdAt)
+  `).run({
+    date: entry.date,
+    repoPath: entry.repoPath,
+    repoName: entry.repoName,
+    totalCommits: entry.totalCommits,
+    totalFiles: entry.totalFiles,
+    filesSummary: entry.filesSummary,
+    itemsJson: JSON.stringify(entry.items),
+    rawJson: entry.rawJson,
+    createdAt: entry.createdAt || new Date().toISOString(),
+  });
+  return result.lastInsertRowid as number;
+}
+
+export function getEntriesForRange(
+  fromDate: string,
+  toDate: string,
+  repoRoot: string
+): ImpactEntry[] {
+  const db = getDb(repoRoot);
+  const rows = db
+    .prepare(`SELECT * FROM impact_entries WHERE date >= ? AND date <= ? ORDER BY date ASC`)
+    .all(fromDate, toDate) as Record<string, unknown>[];
+  return rows.map(rowToEntry);
+}
+
+export function getEntriesForDaysAgo(days: number, repoRoot: string): ImpactEntry[] {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const from = cutoff.toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  return getEntriesForRange(from, to, repoRoot);
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function gitImpactDir(repoRoot: string): string {
+  return path.join(repoRoot, GIT_IMPACT_DIR);
+}
+
+/** Add history.db to .gitignore automatically — only the DB, not context.json */
+function ensureGitignore(repoRoot: string): void {
+  const gitignorePath = path.join(repoRoot, ".gitignore");
+  const existing = fs.existsSync(gitignorePath)
+    ? fs.readFileSync(gitignorePath, "utf-8")
+    : "";
+  if (!existing.includes(GITIGNORE_ENTRY)) {
+    const addition = `\n# git-impact local history (private, per-machine)\n${GITIGNORE_ENTRY}\n`;
+    fs.appendFileSync(gitignorePath, addition, "utf-8");
+  }
+}
+
+function rowToEntry(row: Record<string, unknown>): ImpactEntry {
+  return {
+    id: row.id as number,
+    date: row.date as string,
+    repoPath: row.repo_path as string,
+    repoName: row.repo_name as string,
+    totalCommits: row.total_commits as number,
+    totalFiles: row.total_files as number,
+    filesSummary: row.files_summary as string,
+    items: JSON.parse((row.items_json as string) || "[]"),
+    rawJson: row.raw_json as string,
+    createdAt: row.created_at as string,
+  };
+}
