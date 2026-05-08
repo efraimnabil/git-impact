@@ -36,12 +36,14 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const readline = __importStar(require("readline"));
+const path = __importStar(require("path"));
 const process = __importStar(require("process"));
 const git_1 = require("../readers/git");
 const github_1 = require("../readers/github");
 const translate_1 = require("../translator/translate");
 const db_1 = require("../storage/db");
 const repo_1 = require("../mcp/repo");
+const installer_1 = require("../init/installer");
 const program = new commander_1.Command();
 program
     .name("git-impact")
@@ -155,41 +157,43 @@ program
 // ─── init ─────────────────────────────────────────────────────────────────────
 program
     .command("init")
-    .description("Set up personalization context for this repo")
+    .description("Install git-impact into this repo and set up personalization context")
     .option("-p, --path <path>", "Path to git repository (auto-detected if omitted)")
     .action(async (opts) => {
     const repoRoot = getRepoOrDie(opts.path);
     const existing = (0, db_1.loadContext)(repoRoot);
+    // Run the interactive wizard (company desc, manager priorities, glossary, integrations)
+    const { context, integrations } = await (0, installer_1.runInitWizard)(repoRoot);
+    // Ask for CLI-specific secrets (not committed, stored in context.json locally)
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const ask = (q) => new Promise((res) => rl.question(q, res));
-    console.log(`\ngit-impact init — ${repoRoot}\n${"─".repeat(40)}`);
-    console.log("Context is saved to .git-impact/context.json");
-    console.log("You can commit it to share settings with your team.\n");
-    const companyDescription = await ask(`What does your company/product do? (1-2 sentences)\n${existing?.companyDescription ? `[current: ${existing.companyDescription}]\n` : ""}> `);
-    const managerPriorities = await ask(`\nWhat does your manager care most about?\n${existing?.managerPriorities ? `[current: ${existing.managerPriorities}]\n` : ""}> `);
-    const glossaryInput = await ask(`\nTechnical terms to translate? Format: "RLS=data security, MFA=login security"\n${existing?.glossary ? `[current: ${Object.entries(existing.glossary).map(([k, v]) => `${k}=${v}`).join(", ")}]\n` : ""}(leave blank to skip)\n> `);
-    const anthropicApiKey = await ask(`\nAnthropic API key (for CLI mode — not needed for Claude Code MCP)\n${existing?.anthropicApiKey ? "[already set, press Enter to keep]\n" : ""}> `);
-    const githubToken = await ask(`\nGitHub token (optional, for PR data)\n${existing?.githubToken ? "[already set, press Enter to keep]\n" : "(leave blank to skip)\n"}> `);
+    const anthropicApiKey = await ask(`\n  Anthropic API key (for CLI translate mode — not needed for Claude Code)\n` +
+        (existing?.anthropicApiKey ? `  [already set, press Enter to keep]\n` : `  [leave blank to skip for now]\n`) +
+        `  > `);
+    const githubToken = await ask(`\n  GitHub token (optional — enriches output with PR titles)\n` +
+        (existing?.githubToken ? `  [already set, press Enter to keep]\n` : `  [leave blank to skip]\n`) +
+        `  > `);
     rl.close();
-    const glossary = { ...(existing?.glossary ?? {}) };
-    if (glossaryInput.trim()) {
-        for (const pair of glossaryInput.split(",")) {
-            const [term, meaning] = pair.split("=").map((s) => s.trim());
-            if (term && meaning)
-                glossary[term] = meaning;
-        }
-    }
-    const ctx = {
-        companyDescription: companyDescription.trim() || existing?.companyDescription || "",
-        managerPriorities: managerPriorities.trim() || existing?.managerPriorities || "",
-        glossary,
+    // Merge CLI-only secrets into context and persist
+    const fullContext = {
+        ...context,
         anthropicApiKey: anthropicApiKey.trim() || existing?.anthropicApiKey,
         githubToken: githubToken.trim() || existing?.githubToken,
     };
-    (0, db_1.saveContext)(ctx, repoRoot);
-    console.log(`\nSaved to ${repoRoot}/.git-impact/context.json`);
-    console.log("You can commit context.json to share it with your team.");
-    console.log("history.db has been added to .gitignore automatically.\n");
+    (0, db_1.saveContext)(fullContext, repoRoot);
+    // Install all integration files (SKILL.md, Copilot instructions, Cursor rules, etc.)
+    const installed = (0, installer_1.install)({ repoRoot, integrations, context, silent: false });
+    // Print summary
+    console.log(`\n  ${"─".repeat(36)}`);
+    console.log(`  git-impact installed\n`);
+    for (const f of installed) {
+        const rel = path.relative(repoRoot, f.path);
+        const icon = f.action === "created" ? "✅" : f.action === "updated" ? "🔄" : "⏭️ ";
+        console.log(`  ${icon}  ${rel}`);
+    }
+    console.log(`\n  Next steps:`);
+    console.log(`  1. git add .git-impact/context.json .claude/ && git commit -m "chore: add git-impact"`);
+    console.log(`  2. In Claude Code, say: "do my standup"\n`);
 });
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getRepoOrDie(explicitPath) {
