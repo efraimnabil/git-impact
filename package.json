@@ -2,12 +2,27 @@
   "name": "git-impact",
   "version": "0.1.0",
   "description": "Translate your git commits into plain-English business impact",
+  "author": "Efraim Nafady",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/efraimnafady/git-impact"
+  },
+  "homepage": "https://github.com/efraimnafady/git-impact#readme",
   "main": "dist/cli/index.js",
   "bin": {
-    "git-impact": "dist/cli/index.js"
+    "git-impact": "dist/cli/index.js",
+    "git-impact-mcp": "dist/mcp/server.js"
   },
+  "files": [
+    "dist/",
+    "skill/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "dev": "ts-node src/cli/index.ts",
     "start": "node dist/cli/index.js",
     "mcp": "node dist/mcp/server.js"
@@ -17,9 +32,10 @@
     "standup",
     "productivity",
     "ai",
-    "mcp"
+    "mcp",
+    "claude",
+    "developer-tools"
   ],
-  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.0",
