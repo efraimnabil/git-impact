@@ -1,0 +1,10 @@
+{
+  "companyDescription": "Developer productivity tool — helps engineers translate their daily git commits into plain-English impact summaries for standups and performance reviews.",
+  "managerPriorities": "Shipping working features, keeping the tool reliable, growing early user base",
+  "glossary": {
+    "MCP": "Claude Code integration",
+    "SQLite": "local database",
+    "CLI": "command-line tool",
+    "RLS": "data security layer"
+  }
+}
