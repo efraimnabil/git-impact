@@ -1,7 +1,7 @@
 {
   "name": "git-impact",
-  "version": "0.3.0",
-  "description": "Translate your git commits into plain-English business impact",
+  "version": "0.4.0",
+  "description": "Translate your git commits into plain-English business impact — runs inside your AI editor, no API key.",
   "author": "Efraim Nafady",
   "license": "MIT",
   "repository": {
@@ -38,12 +38,10 @@
   ],
   "type": "commonjs",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.95.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.1",
     "better-sqlite3": "^12.9.0",
     "commander": "^14.0.3",
-    "conf": "^15.1.0",
     "simple-git": "^3.36.0"
   },
   "devDependencies": {

@@ -141,7 +141,6 @@ exports.TOOL_DEFINITIONS = [
                     additionalProperties: { type: "string" },
                 },
                 github_token: { type: "string" },
-                anthropic_api_key: { type: "string" },
             },
         },
     },
@@ -247,7 +246,6 @@ function handleUpdateContext(args) {
         managerPriorities: args.manager_priorities ?? existing.managerPriorities,
         glossary: args.glossary ?? existing.glossary,
         githubToken: args.github_token ?? existing.githubToken,
-        anthropicApiKey: args.anthropic_api_key ?? existing.anthropicApiKey,
     };
     try {
         (0, db_1.saveContext)(updated, repo.path);
@@ -257,7 +255,6 @@ function handleUpdateContext(args) {
             context: {
                 ...updated,
                 githubToken: updated.githubToken ? "***" : undefined,
-                anthropicApiKey: updated.anthropicApiKey ? "***" : undefined,
             },
         }, null, 2));
     }

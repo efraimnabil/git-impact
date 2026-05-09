@@ -23,7 +23,6 @@ export interface UserContext {
   managerPriorities: string;
   glossary: Record<string, string>;
   githubToken?: string;
-  anthropicApiKey?: string;
 }
 
 export interface ImpactItem {

@@ -18,7 +18,7 @@ Translate your git commits into plain-English business impact — for standups, 
    4 commits on main
 ```
 
-No API key needed when used through Claude Code.
+No API key, ever. Translation runs inside your AI editor.
 
 ---
 
@@ -99,7 +99,7 @@ Works in **Claude Code**, **GitHub Copilot**, **Cursor**, and **Gemini CLI** —
 
 ## How it works
 
-git-impact reads your commits with `git log`, loads the team glossary from `.git-impact/context.json`, and translates them into business language. The AI editor does the translation inline — no separate process, no API key needed.
+git-impact reads your commits with `git log`, loads the team glossary from `.git-impact/context.json`, and translates them into business language. The AI editor does the translation inline — no separate process, no API key.
 
 ```
 your commits  →  git log  →  context.json glossary  →  AI translation  →  standup
@@ -205,16 +205,12 @@ Led the security layer redesign that enabled SOC2 compliance sign-off.
 
 ## CLI reference
 
-The CLI requires an Anthropic API key (set during `init` or via `ANTHROPIC_API_KEY`). Not needed when using the Claude Code skill.
+The CLI is just for installing and viewing reports — translation always happens inside your AI editor.
 
 ```bash
 git-impact init                    # set up / update this repo
-git-impact today                   # translate today's commits
-git-impact since yesterday         # since yesterday
-git-impact since 3d                # last 3 days
-git-impact since 2026-05-01        # since a specific date
-git-impact review --last 90        # performance review, last 90 days
-git-impact review --quarter Q2-2026
+git-impact view                    # open the HTML report of saved standups
+git-impact view --date 2026-05-09  # open a specific day directly
 ```
 
 All commands accept `-p <path>` to point at a different repo. By default the repo is auto-detected from the current directory.
@@ -223,7 +219,7 @@ All commands accept `-p <path>` to point at a different repo. By default the rep
 
 ## MCP server
 
-The MCP server exposes git data as tools so Claude Code can call them directly. It requires no API key — Claude does the translation in its own session.
+The MCP server exposes git data as tools so Claude Code can call them directly. No API key — Claude does the translation in its own session.
 
 Add to `.claude/settings.json` in your project:
 
@@ -253,8 +249,8 @@ npm run build
 # Test the installer
 node dist/cli/index.js init
 
-# Test standup translation
-node dist/cli/index.js today
+# Open the HTML report
+node dist/cli/index.js view
 
 # Run the MCP server
 node dist/mcp/server.js
@@ -280,11 +276,11 @@ src/
 ├── readers/
 │   ├── git.ts          # reads git log, diffs, file changes
 │   └── github.ts       # reads PRs via GitHub API (optional)
-├── translator/
-│   ├── prompt.ts       # Claude prompt templates
-│   └── translate.ts    # calls Claude API (CLI mode only)
 ├── storage/
 │   └── db.ts           # per-repo SQLite history + context.json
+├── report/
+│   ├── render.ts       # builds the HTML standup report
+│   └── html.ts         # HTML template helpers
 ├── mcp/
 │   ├── server.ts       # MCP server entry point
 │   ├── tools.ts        # data tools (get_git_activity, etc.)
@@ -292,7 +288,7 @@ src/
 │   ├── prompts.ts      # computed prompt templates (standup, review)
 │   └── repo.ts         # auto-detects repo root from cwd
 └── cli/
-    └── index.ts        # commander CLI
+    └── index.ts        # init + view commands
 skill/
 └── SKILL.md            # standalone Claude Code skill (copy to any repo)
 ```

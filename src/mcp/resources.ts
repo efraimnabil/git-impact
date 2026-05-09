@@ -57,7 +57,6 @@ function readContextResource(repoRoot: string | null): ReadResourceResult {
               manager_priorities:  ctx.managerPriorities,
               glossary:            ctx.glossary,
               has_github_token:    Boolean(ctx.githubToken),
-              has_anthropic_key:   Boolean(ctx.anthropicApiKey),
             }
           : {
               configured: false,

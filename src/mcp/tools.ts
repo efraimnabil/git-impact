@@ -121,7 +121,6 @@ export const TOOL_DEFINITIONS: Tool[] = [
           additionalProperties: { type: "string" },
         },
         github_token: { type: "string" },
-        anthropic_api_key: { type: "string" },
       },
     },
   },
@@ -248,7 +247,6 @@ function handleUpdateContext(args: Record<string, unknown>): ToolResult {
     managerPriorities:  (args.manager_priorities as string)  ?? existing.managerPriorities,
     glossary:           (args.glossary as Record<string, string>) ?? existing.glossary,
     githubToken:        (args.github_token as string)         ?? existing.githubToken,
-    anthropicApiKey:    (args.anthropic_api_key as string)    ?? existing.anthropicApiKey,
   };
 
   try {
@@ -259,8 +257,7 @@ function handleUpdateContext(args: Record<string, unknown>): ToolResult {
         location: `${repo.path}/.git-impact/context.json`,
         context: {
           ...updated,
-          githubToken:     updated.githubToken     ? "***" : undefined,
-          anthropicApiKey: updated.anthropicApiKey ? "***" : undefined,
+          githubToken: updated.githubToken ? "***" : undefined,
         },
       }, null, 2)
     );
