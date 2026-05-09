@@ -30,20 +30,28 @@ export function renderReport(opts: RenderOptions): RenderResult {
   const repoName = entries[0]?.repoName ?? path.basename(repoRoot);
 
   // Be tolerant of historical shapes — earlier skill versions saved items as
-  // {title, impact} or {text, impact} instead of the canonical {summary, status}.
-  // Coerce whatever the row contains into ReportItem so the report still renders.
+  // raw strings, {title, impact}, or {text, impact} instead of the canonical
+  // {summary, status, impact}. Coerce whatever's there into ReportItem so the
+  // report still renders.
   const reportEntries: ReportEntry[] = entries.map((e) => ({
     date: e.date,
     repoName: e.repoName,
     totalCommits: e.totalCommits,
     totalFiles: e.totalFiles,
     filesSummary: e.filesSummary,
-    items: (e.items as unknown as Record<string, unknown>[]).map((it) => ({
-      status: (it.status as ReportItem["status"]) ?? "done",
-      summary: (it.summary ?? it.title ?? it.text ?? it.headline ?? "—") as string,
-      impact: it.impact as string | undefined,
-      technical_note: (it.technical_note ?? it.note) as string | undefined,
-    })),
+    items: (e.items as unknown as unknown[]).map((raw): ReportItem => {
+      // Plain string item — older skill runs saved arrays of strings.
+      if (typeof raw === "string") {
+        return { status: "done", summary: raw };
+      }
+      const it = (raw ?? {}) as Record<string, unknown>;
+      return {
+        status: (it.status as ReportItem["status"]) ?? "done",
+        summary: (it.summary ?? it.title ?? it.text ?? it.headline ?? "—") as string,
+        impact: it.impact as string | undefined,
+        technical_note: (it.technical_note ?? it.note) as string | undefined,
+      };
+    }),
   }));
 
   const html = renderReportHtml(reportEntries, repoName);
