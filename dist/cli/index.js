@@ -44,11 +44,12 @@ const translate_1 = require("../translator/translate");
 const db_1 = require("../storage/db");
 const repo_1 = require("../mcp/repo");
 const installer_1 = require("../init/installer");
+const render_1 = require("../report/render");
 const program = new commander_1.Command();
 program
     .name("git-impact")
     .description("Translate git commits into plain-English business impact")
-    .version("0.1.0");
+    .version("0.2.0");
 // ─── today ────────────────────────────────────────────────────────────────────
 program
     .command("today")
@@ -80,8 +81,9 @@ program
     const result = await (0, translate_1.translateActivity)(git, github, context, dateLabel);
     printResult(dateLabel, result, git);
     if (opts.save !== false) {
+        const today = until.toISOString().slice(0, 10);
         (0, db_1.saveEntry)({
-            date: until.toISOString().slice(0, 10),
+            date: today,
             repoPath: repoRoot,
             repoName: git.repoName,
             totalCommits: result.totalCommits,
@@ -91,6 +93,9 @@ program
             rawJson: result.rawJson,
             createdAt: new Date().toISOString(),
         }, repoRoot);
+        // Regenerate HTML report so the user always has a fresh file:// link to share.
+        const report = (0, render_1.renderReport)({ repoRoot, open: false, date: today });
+        console.log(`🔗 ${report.url}\n`);
     }
 });
 // ─── since ────────────────────────────────────────────────────────────────────
@@ -153,6 +158,29 @@ program
     }
     console.log("\n" + "─".repeat(50));
     console.log(`📊 ${review.stats.total_commits} commits across ${review.stats.working_days} working days\n`);
+});
+// ─── view ─────────────────────────────────────────────────────────────────────
+program
+    .command("view")
+    .description("Generate / open the HTML report of saved standups")
+    .option("-p, --path <path>", "Path to git repository (auto-detected if omitted)")
+    .option("--date <date>", "Focus a specific date (YYYY-MM-DD) — opens that day directly")
+    .option("--no-open", "Just regenerate the file, don't open the browser")
+    .action((opts) => {
+    const repoRoot = getRepoOrDie(opts.path);
+    const result = (0, render_1.renderReport)({
+        repoRoot,
+        open: opts.open !== false,
+        date: opts.date,
+    });
+    if (result.entryCount === 0) {
+        console.log(`\nNo standups saved yet for ${repoRoot}.\n` +
+            `Run \`git-impact today\` (or "do my standup" in Claude Code) to build history.\n` +
+            `Empty report still written to: ${result.htmlPath}\n`);
+        return;
+    }
+    console.log(`\nReport regenerated — ${result.entryCount} standup(s)`);
+    console.log(`  ${result.url}\n`);
 });
 // ─── init ─────────────────────────────────────────────────────────────────────
 program

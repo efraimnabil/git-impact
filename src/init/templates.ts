@@ -109,6 +109,16 @@ sqlite3 "$REPO_ROOT/.git-impact/history.db" "
 " 2>/dev/null || true
 \`\`\`
 
+Then regenerate the HTML report and tell the user where to find it:
+\`\`\`bash
+cd "$REPO_ROOT" && npx -y git-impact view --no-open --date "$(date +%Y-%m-%d)" 2>/dev/null || true
+\`\`\`
+
+Print the file URL on the last line so the user can ⌘-click to open it:
+\`\`\`
+🔗 file://$REPO_ROOT/.git-impact/result.html?date=$(date +%Y-%m-%d)
+\`\`\`
+
 ## Mode: review
 
 Query history and synthesise a performance review:
