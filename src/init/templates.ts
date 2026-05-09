@@ -109,14 +109,30 @@ sqlite3 "$REPO_ROOT/.git-impact/history.db" "
 " 2>/dev/null || true
 \`\`\`
 
-Then regenerate the HTML report and tell the user where to find it:
+## Step 4 — Generate the HTML report (REQUIRED, run this)
+
+This step is mandatory, not optional. After saving to history, you **must
+actually execute** the following bash command — do not just describe it.
+Without this step, the file:// link you print will 404.
+
 \`\`\`bash
-cd "$REPO_ROOT" && npx -y git-impact view --no-open --date "$(date +%Y-%m-%d)" 2>/dev/null || true
+cd "$REPO_ROOT" && npx --yes git-impact@latest view --no-open --date "$(date +%Y-%m-%d)"
 \`\`\`
 
-Print the file URL on the last line so the user can ⌘-click to open it:
+This uses npx, so the user does **not** need to have \`git-impact\` installed
+locally. If the command errors, surface the error to the user — don't swallow
+it. If it succeeds, \`.git-impact/result.html\` will exist.
+
+Then, and only then, print the link as the very last line of your response:
+
 \`\`\`
 🔗 file://$REPO_ROOT/.git-impact/result.html?date=$(date +%Y-%m-%d)
+\`\`\`
+
+If the npx command failed, instead print:
+\`\`\`
+⚠️  HTML report could not be generated: <paste the error message>
+   Run \`npx git-impact@latest view\` from the repo to retry.
 \`\`\`
 
 ## Mode: review
