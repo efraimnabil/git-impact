@@ -124,31 +124,150 @@ sqlite3 "$REPO_ROOT/.git-impact/history.db" "
 " 2>/dev/null || true
 \`\`\`
 
-## Step 4 — Generate the HTML report (REQUIRED, run this)
+## Step 4 — Compose a real HTML presentation (REQUIRED)
 
-This step is mandatory, not optional. After saving to history, you **must
-actually execute** the following bash command — do not just describe it.
-Without this step, the file:// link you print will 404.
+After saving to history, **build a polished standalone HTML file using your
+Write tool** — not a script, not a template. Each day's standup is bespoke.
+The file should look like a manager-ready slide, not a bullet list with CSS.
 
-\`\`\`bash
-cd "$REPO_ROOT" && npx --yes git-impact@latest view --no-open --date "$(date +%Y-%m-%d)"
+### Where
+- Write to: \`$REPO_ROOT/.git-impact/standups/YYYY-MM-DD.html\` (one file per day)
+- Then update: \`$REPO_ROOT/.git-impact/standups/index.html\` — link to every daily file (newest first)
+
+### Stack (all via CDN — no build step, no npm install)
+- **Tailwind CSS**: \`<script src="https://cdn.tailwindcss.com"></script>\`
+- **Inter font**: \`<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">\`
+- **Lucide icons** (when icons would help): \`<script src="https://unpkg.com/lucide@latest"></script>\` then \`lucide.createIcons()\`
+- **Chart.js** (only if there are real numbers to chart): \`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>\`
+- **Mermaid** (for architecture/flow diagrams when relevant): \`<script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs'; mermaid.initialize({startOnLoad:true, theme:'dark'});</script>\`
+
+### Required structure
+
+1. **Hero** — date, one bold headline that captures the day in plain English
+   (not "9 commits" — something like "Shipped safety analytics, hardened tenant isolation")
+2. **Stats grid** — 3-4 cards with the most meaningful numbers (commits, files, PRs merged, areas touched)
+3. **Achievement cards** — one card per ✅ item:
+   - Bold title with a status pill (✅ Shipped / ⏳ In Progress / 🚫 Blocked)
+   - 1-2 sentence plain-English summary
+   - "→ Why it matters" line in slightly muted text
+   - Optional: relevant tags (PR #, area, file count)
+4. **Visual element when warranted** — pick ONE if the content supports it:
+   - Mermaid flow diagram if the day involved architecture/data-flow changes
+   - Chart.js bar or donut if there are quantities worth comparing
+   - Code-style block with a key formula or snippet (e.g. the LTIF formula)
+   - Skip entirely if the day was straightforward — don't force visuals
+5. **Footer** — file count, branch, commit count, link back to index
+
+### Design language
+
+- **Theme**: Dark mode by default, with \`prefers-color-scheme: light\` fallback
+- **Background**: \`bg-slate-950\` (dark) / \`bg-white\` (light), with a subtle radial gradient highlight
+- **Cards**: \`bg-slate-900/50 border border-slate-800 rounded-2xl p-6\` — generous padding, soft borders
+- **Typography**: Inter, tight letter-spacing on headlines, 1.6 line-height on body
+- **Color accents** by status:
+  - Done → \`emerald-400 / emerald-500/20\` background pill
+  - In progress → \`amber-400 / amber-500/20\`
+  - Blocked → \`rose-400 / rose-500/20\`
+- **Spacing**: \`max-w-4xl mx-auto px-8 py-12\`, generous \`space-y-6\` between cards
+- **Print-friendly**: include a \`@media print\` block that hides the nav and uses light theme
+
+### Example skeleton (adapt the content to today's actual work)
+
+\`\`\`html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Standup — [Day, Date] · [Repo]</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    @media print { .no-print { display: none } body { background: white; color: black; } }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.08),transparent_50%)] pointer-events-none"></div>
+
+  <main class="relative max-w-4xl mx-auto px-8 py-16">
+    <!-- Hero -->
+    <header class="mb-16">
+      <p class="text-sm uppercase tracking-widest text-slate-500 font-medium">[Saturday, May 9, 2026]</p>
+      <h1 class="mt-3 text-5xl font-bold tracking-tight leading-tight">[Headline that captures the day]</h1>
+      <p class="mt-4 text-xl text-slate-400 max-w-2xl">[One-sentence subtitle — why this day mattered]</p>
+    </header>
+
+    <!-- Stats -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
+      <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-5">
+        <div class="text-3xl font-bold">[N]</div>
+        <div class="text-sm text-slate-400 mt-1">commits</div>
+      </div>
+      <!-- ... 3 more stat cards -->
+    </section>
+
+    <!-- Achievements -->
+    <section class="space-y-4 mb-16">
+      <h2 class="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-4">Shipped today</h2>
+      <article class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition">
+        <div class="flex items-start gap-4">
+          <span class="px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-medium">✅ Shipped</span>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold">[Plain-English title]</h3>
+            <p class="text-slate-300 mt-2 leading-relaxed">[One-sentence summary]</p>
+            <p class="text-slate-400 mt-3 text-sm">→ [Why it matters in business terms]</p>
+            <div class="flex gap-2 mt-4">
+              <span class="text-xs text-slate-500">[area] · [PR #] · [N files]</span>
+            </div>
+          </div>
+        </div>
+      </article>
+      <!-- ... more cards -->
+    </section>
+
+    <!-- Optional: visual section. Only include when warranted. -->
+    <!-- Example with Mermaid: -->
+    <!--
+    <section class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mb-16">
+      <h2 class="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-4">Data flow</h2>
+      <div class="mermaid">
+        flowchart LR
+          Upload[Plant CSV] --> Parser
+          Parser --> RLS[Row-level security]
+          RLS --> Causal[Causal analytics dashboard]
+      </div>
+    </section>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { fontFamily: 'Inter' } });
+    </script>
+    -->
+
+    <!-- Footer -->
+    <footer class="pt-8 border-t border-slate-800 text-sm text-slate-500 flex justify-between">
+      <span>[N] files · [N] commits · [branch]</span>
+      <a href="./index.html" class="hover:text-slate-300">← All standups</a>
+    </footer>
+  </main>
+</body>
+</html>
 \`\`\`
 
-This uses npx, so the user does **not** need to have \`git-impact\` installed
-locally. If the command errors, surface the error to the user — don't swallow
-it. If it succeeds, \`.git-impact/result.html\` will exist.
+### Then build the index page
 
-Then, and only then, print the link as the very last line of your response:
+\`$REPO_ROOT/.git-impact/standups/index.html\` should list every daily HTML file
+in the \`standups/\` directory (newest first). When updating it, list every \`.html\`
+file you find in that directory except \`index.html\` itself. Use the same dark
+theme — a clean grid of cards, each linking to its day. Keep it lightweight.
+
+### Then print the file URL on the last line
 
 \`\`\`
-🔗 file://$REPO_ROOT/.git-impact/result.html?date=$(date +%Y-%m-%d)
+🎯 file:///$REPO_ROOT/.git-impact/standups/$(date +%Y-%m-%d).html
 \`\`\`
 
-If the npx command failed, instead print:
-\`\`\`
-⚠️  HTML report could not be generated: <paste the error message>
-   Run \`npx git-impact@latest view\` from the repo to retry.
-\`\`\`
+Replace \`$REPO_ROOT\` with the real absolute path so the user can ⌘-click it.
 
 ## Mode: review
 

@@ -168,6 +168,53 @@ VALUES ('$(date +%Y-%m-%d)', '$(basename $REPO_ROOT)', $COMMIT_COUNT, $FILE_COUN
 
 If `sqlite3` is not available, skip silently.
 
+### Build a polished HTML presentation
+
+After saving to history, **use your Write tool to create a bespoke HTML
+presentation** for today's standup. This is not a generic template — each day's
+file should be tailored to the actual content, with custom layout, charts, or
+diagrams when they help.
+
+**Where to write:**
+- `$REPO_ROOT/.git-impact/standups/YYYY-MM-DD.html` — today's file
+- `$REPO_ROOT/.git-impact/standups/index.html` — list of all standups (regenerate it)
+
+**Stack (all CDN, no install):**
+- Tailwind CSS via `<script src="https://cdn.tailwindcss.com">`
+- Inter font via Google Fonts
+- Chart.js (`https://cdn.jsdelivr.net/npm/chart.js`) only if there are real numbers worth charting
+- Mermaid (`https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs`) for flow/architecture diagrams when relevant
+
+**Required structure:**
+1. **Hero** — date label + a bold, plain-English headline that captures the day
+   ("Shipped safety analytics, hardened tenant isolation" — not "9 commits")
+2. **Stats grid** — 3-4 metric cards (commits, files, PRs merged, areas touched)
+3. **Achievement cards** — one per ✅ item with status pill, title, summary,
+   "→ Why it matters" line, and tags (PR #, area, file count)
+4. **Optional visual** — only when the content warrants one (a Mermaid flow
+   diagram for architecture changes, a Chart.js chart for ratios/comparisons,
+   a code-style block for a key formula). Skip if forced.
+5. **Footer** — file count, branch, link back to `index.html`
+
+**Design language:**
+- Dark theme by default (`bg-slate-950`), generous spacing, max width 4xl
+- Cards: `bg-slate-900/50 border border-slate-800 rounded-2xl p-6`
+- Status pills: emerald for done, amber for in-progress, rose for blocked
+- Print-friendly via `@media print`
+
+**Status pill colors:**
+- ✅ Shipped → `bg-emerald-500/20 text-emerald-400`
+- ⏳ In Progress → `bg-amber-500/20 text-amber-400`
+- 🚫 Blocked → `bg-rose-500/20 text-rose-400`
+
+After writing both files, print the file URL on the very last line of your reply:
+
+```
+🎯 file://$REPO_ROOT/.git-impact/standups/YYYY-MM-DD.html
+```
+
+Replace `$REPO_ROOT` with the real absolute path so the user can ⌘-click.
+
 ---
 
 ## Mode: review
