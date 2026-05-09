@@ -1,6 +1,6 @@
 {
   "name": "git-impact",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Translate your git commits into plain-English business impact",
   "author": "Efraim Nafady",
   "license": "MIT",

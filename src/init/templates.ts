@@ -92,7 +92,22 @@ git -C "$REPO_ROOT" diff --stat "$FIRST"^ HEAD 2>/dev/null
    [N] commit(s) on [branch]
 \`\`\`
 
-Save to history after printing:
+Save to history after printing. **The items_json shape matters** — the HTML
+report and performance review reader expect this exact structure:
+
+\`\`\`json
+[
+  {
+    "status": "done",                      // "done" | "in_progress" | "blocked"
+    "summary": "Plain-English what",       // REQUIRED — the bullet text
+    "impact": "Why it matters",            // optional — what was unblocked
+    "technical_note": "files/PR #refs"     // optional — small grey note
+  }
+]
+\`\`\`
+
+Use \`summary\` (not \`title\` or \`text\`) and always include \`status\`.
+
 \`\`\`bash
 mkdir -p "$REPO_ROOT/.git-impact"
 sqlite3 "$REPO_ROOT/.git-impact/history.db" "

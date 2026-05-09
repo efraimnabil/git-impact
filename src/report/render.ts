@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
 import { getEntriesForRange } from "../storage/db";
-import { renderReportHtml, ReportEntry } from "./html";
+import { renderReportHtml, ReportEntry, ReportItem } from "./html";
 
 export interface RenderOptions {
   repoRoot: string;
@@ -29,17 +29,20 @@ export function renderReport(opts: RenderOptions): RenderResult {
   const entries = getEntriesForRange("0000-01-01", "9999-12-31", repoRoot);
   const repoName = entries[0]?.repoName ?? path.basename(repoRoot);
 
+  // Be tolerant of historical shapes — earlier skill versions saved items as
+  // {title, impact} or {text, impact} instead of the canonical {summary, status}.
+  // Coerce whatever the row contains into ReportItem so the report still renders.
   const reportEntries: ReportEntry[] = entries.map((e) => ({
     date: e.date,
     repoName: e.repoName,
     totalCommits: e.totalCommits,
     totalFiles: e.totalFiles,
     filesSummary: e.filesSummary,
-    items: e.items.map((it) => ({
-      status: it.status,
-      summary: it.summary,
-      impact: it.impact,
-      technical_note: it.technical_note,
+    items: (e.items as unknown as Record<string, unknown>[]).map((it) => ({
+      status: (it.status as ReportItem["status"]) ?? "done",
+      summary: (it.summary ?? it.title ?? it.text ?? it.headline ?? "—") as string,
+      impact: it.impact as string | undefined,
+      technical_note: (it.technical_note ?? it.note) as string | undefined,
     })),
   }));
 

@@ -23,7 +23,7 @@ const program = new Command();
 program
   .name("git-impact")
   .description("Translate git commits into plain-English business impact")
-  .version("0.2.1");
+  .version("0.2.2");
 
 // ─── today ────────────────────────────────────────────────────────────────────
 
