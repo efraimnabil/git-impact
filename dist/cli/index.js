@@ -45,7 +45,7 @@ const program = new commander_1.Command();
 program
     .name("git-impact")
     .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-    .version("0.6.0");
+    .version("0.6.1");
 // ─── init ─────────────────────────────────────────────────────────────────────
 program
     .command("init")
