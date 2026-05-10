@@ -1,5 +1,6 @@
 import simpleGit, { DefaultLogFields, LogResult } from "simple-git";
 import * as path from "path";
+import { redactFilename, redactText, RedactConfig } from "./redact";
 
 export interface CommitInfo {
   hash: string;
@@ -33,7 +34,8 @@ function stripCredentials(url: string): string {
 export async function readGitActivity(
   repoPath: string,
   since: Date,
-  until: Date = new Date()
+  until: Date = new Date(),
+  redactCfg: RedactConfig = { enabled: true }
 ): Promise<GitSummary> {
   const git = simpleGit(repoPath);
 
@@ -62,7 +64,11 @@ export async function readGitActivity(
 
   const commits: CommitInfo[] = await Promise.all(
     log.all.map(async (entry) => {
-      const diff = await git.diff([`${entry.hash}^`, entry.hash, "--stat"]);
+      // Root commits don't have a parent; `<hash>^` blows up. Fall back to
+      // `git show --stat` which works for both root and non-root commits.
+      const diff = await git
+        .diff([`${entry.hash}^`, entry.hash, "--stat"])
+        .catch(() => git.show(["--stat", "--format=", entry.hash]));
       const showOutput = await git.show([
         "--stat",
         "--name-only",
@@ -72,15 +78,16 @@ export async function readGitActivity(
       const filesChanged = showOutput
         .split("\n")
         .map((l) => l.trim())
-        .filter((l) => l && !l.includes("|") && !l.startsWith("=>") && !l.match(/^\d+ file/));
+        .filter((l) => l && !l.includes("|") && !l.startsWith("=>") && !l.match(/^\d+ file/))
+        .map((f) => redactFilename(f, redactCfg));
 
       return {
         hash: entry.hash.slice(0, 8),
         date: entry.date,
-        message: entry.message,
+        message: redactText(entry.message, redactCfg),
         author: entry.author_name,
-        body: entry.body || "",
-        diff,
+        body: redactText(entry.body || "", redactCfg),
+        diff: redactText(diff, redactCfg),
         filesChanged,
       };
     })

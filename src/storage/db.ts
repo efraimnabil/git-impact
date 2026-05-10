@@ -23,6 +23,17 @@ export interface UserContext {
   managerPriorities: string;
   glossary: Record<string, string>;
   githubToken?: string;
+  /**
+   * Optional privacy filter config. Default: enabled. Filenames matching env /
+   * credentials patterns are redacted; obvious-looking secrets in commit
+   * bodies are too. Override via `{ "privacy": { "redact": false } }` to disable
+   * or `{ "privacy": { "filePatterns": [...], "valuePatterns": [...] } }` to extend.
+   */
+  privacy?: {
+    redact?: boolean;
+    filePatterns?: string[];
+    valuePatterns?: string[];
+  };
 }
 
 export type ImpactStatus = "done" | "in_progress" | "blocked";

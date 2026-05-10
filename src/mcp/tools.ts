@@ -190,9 +190,19 @@ async function handleGetGitActivity(args: Record<string, unknown>): Promise<Tool
   const since = args.since_iso ? new Date(args.since_iso as string) : startOfDay();
   const until = args.until_iso ? new Date(args.until_iso as string) : new Date();
 
+  // Pull privacy config from context.json so filenames like .env / .aws/credentials
+  // and obvious-looking secrets in commit bodies are redacted before they reach
+  // the translator. Default-on; users can opt out via { privacy: { redact: false } }.
+  const ctx = loadContext(repo.path);
+  const redactCfg = {
+    enabled: ctx?.privacy?.redact !== false,
+    filePatterns: ctx?.privacy?.filePatterns,
+    valuePatterns: ctx?.privacy?.valuePatterns,
+  };
+
   try {
-    const git = await readGitActivity(repo.path, since, until);
-    return ok(JSON.stringify({ ...git, _repo_root: repo.path }, null, 2));
+    const git = await readGitActivity(repo.path, since, until, redactCfg);
+    return ok(JSON.stringify({ ...git, _repo_root: repo.path, _redacted: redactCfg.enabled }, null, 2));
   } catch (err) {
     return error(`Could not read git history: ${(err as Error).message}`);
   }

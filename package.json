@@ -1,6 +1,6 @@
 {
   "name": "git-impact",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Translate your git commits into plain-English business impact — runs inside your AI editor, no API key.",
   "author": "Efraim Nafady",
   "license": "MIT",
@@ -25,7 +25,9 @@
     "prepublishOnly": "npm run build",
     "dev": "ts-node src/cli/index.ts",
     "start": "node dist/cli/index.js",
-    "mcp": "node dist/mcp/server.js"
+    "mcp": "node dist/mcp/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "git",
@@ -48,6 +50,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^2.1.9"
   }
 }

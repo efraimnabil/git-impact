@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name("git-impact")
   .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-  .version("0.5.0");
+  .version("0.6.0");
 
 // ─── init ─────────────────────────────────────────────────────────────────────
 
@@ -41,9 +41,19 @@ program
       const icon = f.action === "created" ? "✅" : f.action === "updated" ? "🔄" : "⏭️ ";
       console.log(`  ${icon}  ${rel}`);
     }
+
+    // Editor-aware next-step hint based on what we actually installed.
+    const trigger =
+      integrations.includes("claude")  ? `In Claude Code: type "/git-impact" or say "do my standup"` :
+      integrations.includes("gemini")  ? `In Gemini CLI: run "/git-impact" (or say "do my standup")`  :
+      integrations.includes("cursor")  ? `In Cursor chat: paste "@git-impact do my standup"`           :
+      integrations.includes("copilot") ? `In Copilot Chat: open this repo and say "do my standup"`    :
+                                         `Open this repo in your AI editor and say "do my standup"`;
+
     console.log(`\n  Next steps:`);
-    console.log(`  1. git add .git-impact/context.json .claude/ && git commit -m "chore: add git-impact"`);
-    console.log(`  2. In Claude Code, say: "do my standup"\n`);
+    console.log(`  1. git add .git-impact/context.json && git commit -m "chore: add git-impact"`);
+    console.log(`  2. ${trigger}`);
+    console.log(`  3. After a few standups: \`git-impact view\` to see the rolling dashboard\n`);
   });
 
 // ─── view ─────────────────────────────────────────────────────────────────────

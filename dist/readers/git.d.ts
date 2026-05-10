@@ -1,3 +1,4 @@
+import { RedactConfig } from "./redact";
 export interface CommitInfo {
     hash: string;
     date: string;
@@ -17,7 +18,7 @@ export interface GitSummary {
         to: string;
     };
 }
-export declare function readGitActivity(repoPath: string, since: Date, until?: Date): Promise<GitSummary>;
+export declare function readGitActivity(repoPath: string, since: Date, until?: Date, redactCfg?: RedactConfig): Promise<GitSummary>;
 export declare function startOfDay(date?: Date): Date;
 export declare function startOfDaysAgo(days: number): Date;
 //# sourceMappingURL=git.d.ts.map

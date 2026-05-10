@@ -200,6 +200,25 @@ function ensureGitignore(repoRoot: string): InstalledFile {
   return { path: gitignorePath, action: "updated" };
 }
 
+// ─── Editor auto-detection ───────────────────────────────────────────────────
+
+/**
+ * Look for editor-specific directories in the repo. Returns whichever editors
+ * already have config there, in stable order. Lets `init` skip the "which AI
+ * tools do you use?" question when the answer is obvious from the filesystem.
+ */
+export function detectEditors(repoRoot: string): Integration[] {
+  const checks: Array<{ editor: Integration; relPath: string }> = [
+    { editor: "claude",  relPath: ".claude" },
+    { editor: "copilot", relPath: ".github" },
+    { editor: "cursor",  relPath: ".cursor" },
+    { editor: "gemini",  relPath: ".gemini" },
+  ];
+  return checks
+    .filter(({ relPath }) => fs.existsSync(path.join(repoRoot, relPath)))
+    .map(({ editor }) => editor);
+}
+
 // ─── Interactive prompt ───────────────────────────────────────────────────────
 
 /**
@@ -242,10 +261,17 @@ export async function runInitWizard(repoRoot: string): Promise<{
     `  > `
   );
 
+  const detected = detectEditors(repoRoot);
+  const detectedLabel =
+    detected.length > 0
+      ? detected.join(", ")
+      : "none detected — defaulting to claude";
+
   const integrationsInput = await ask(
-    `\n  Which AI tools do you use? (comma-separated, or "all")\n` +
+    `\n  Which AI editors should I install for? (comma-separated, or "all")\n` +
     `  Options: claude, copilot, cursor, gemini\n` +
-    `  [default: claude]\n` +
+    `  Detected in this repo: ${detectedLabel}\n` +
+    `  [press Enter to use detected]\n` +
     `  > `
   );
 
@@ -264,14 +290,17 @@ export async function runInitWizard(repoRoot: string): Promise<{
   const ALL_INTEGRATIONS: Integration[] = ["claude", "copilot", "cursor", "gemini"];
   let integrations: Integration[];
   const raw = integrationsInput.toLowerCase().trim();
-  if (!raw || raw === "all") {
+  if (!raw) {
+    // Empty input → use what we detected, or claude as the safe default.
+    integrations = detected.length > 0 ? detected : ["claude"];
+  } else if (raw === "all") {
     integrations = ALL_INTEGRATIONS;
   } else {
     integrations = raw
       .split(",")
       .map((s) => s.trim() as Integration)
       .filter((s) => ALL_INTEGRATIONS.includes(s));
-    if (integrations.length === 0) integrations = ["claude"];
+    if (integrations.length === 0) integrations = detected.length > 0 ? detected : ["claude"];
   }
 
   return {

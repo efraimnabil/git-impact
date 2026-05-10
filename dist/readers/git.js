@@ -41,6 +41,7 @@ exports.startOfDay = startOfDay;
 exports.startOfDaysAgo = startOfDaysAgo;
 const simple_git_1 = __importDefault(require("simple-git"));
 const path = __importStar(require("path"));
+const redact_1 = require("./redact");
 function stripCredentials(url) {
     try {
         const parsed = new URL(url);
@@ -52,7 +53,7 @@ function stripCredentials(url) {
         return url.replace(/\/\/[^@]+@/, "//");
     }
 }
-async function readGitActivity(repoPath, since, until = new Date()) {
+async function readGitActivity(repoPath, since, until = new Date(), redactCfg = { enabled: true }) {
     const git = (0, simple_git_1.default)(repoPath);
     const sinceStr = since.toISOString();
     const untilStr = until.toISOString();
@@ -73,7 +74,11 @@ async function readGitActivity(repoPath, since, until = new Date()) {
         .join("/") || path.basename(repoPath);
     const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
     const commits = await Promise.all(log.all.map(async (entry) => {
-        const diff = await git.diff([`${entry.hash}^`, entry.hash, "--stat"]);
+        // Root commits don't have a parent; `<hash>^` blows up. Fall back to
+        // `git show --stat` which works for both root and non-root commits.
+        const diff = await git
+            .diff([`${entry.hash}^`, entry.hash, "--stat"])
+            .catch(() => git.show(["--stat", "--format=", entry.hash]));
         const showOutput = await git.show([
             "--stat",
             "--name-only",
@@ -83,14 +88,15 @@ async function readGitActivity(repoPath, since, until = new Date()) {
         const filesChanged = showOutput
             .split("\n")
             .map((l) => l.trim())
-            .filter((l) => l && !l.includes("|") && !l.startsWith("=>") && !l.match(/^\d+ file/));
+            .filter((l) => l && !l.includes("|") && !l.startsWith("=>") && !l.match(/^\d+ file/))
+            .map((f) => (0, redact_1.redactFilename)(f, redactCfg));
         return {
             hash: entry.hash.slice(0, 8),
             date: entry.date,
-            message: entry.message,
+            message: (0, redact_1.redactText)(entry.message, redactCfg),
             author: entry.author_name,
-            body: entry.body || "",
-            diff,
+            body: (0, redact_1.redactText)(entry.body || "", redactCfg),
+            diff: (0, redact_1.redactText)(diff, redactCfg),
             filesChanged,
         };
     }));
