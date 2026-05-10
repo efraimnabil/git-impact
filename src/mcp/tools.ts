@@ -11,6 +11,7 @@ import {
   ImpactItem,
   UserContext,
 } from "../storage/db";
+import { renderReport } from "../report/render";
 import { resolveRepoPath } from "./repo";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
@@ -139,6 +140,21 @@ export const TOOL_DEFINITIONS: Tool[] = [
     },
   },
   {
+    name: "render_dashboard",
+    description:
+      "Regenerate the rolling HTML dashboard at .git-impact/result.html from the " +
+      "saved history. Call this AFTER save_impact_entry so today's entry shows up. " +
+      "Returns the file:// URL — print it on the last line of your reply so the " +
+      "user can ⌘-click to open. Don't try to open the browser yourself.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repo_path: { type: "string", description: "Override the repo path." },
+        date: { type: "string", description: "Optional ?date=YYYY-MM-DD focus to add to the URL." },
+      },
+    },
+  },
+  {
     name: "update_context",
     description:
       "Save personalization to this repo's .git-impact/context.json: " +
@@ -176,6 +192,7 @@ export async function handleTool(
     case "save_impact_entry":    return handleSaveImpactEntry(args);
     case "get_last_standup_date":return handleGetLastStandupDate(args);
     case "get_history":          return handleGetHistory(args);
+    case "render_dashboard":     return handleRenderDashboard(args);
     case "update_context":       return handleUpdateContext(args);
     default:                     return error(`Unknown tool: ${name}`);
   }
@@ -288,6 +305,28 @@ function handleGetHistory(args: Record<string, unknown>): ToolResult {
     return ok(JSON.stringify(entries, null, 2));
   } catch (err) {
     return error(`Failed to read history: ${(err as Error).message}`);
+  }
+}
+
+function handleRenderDashboard(args: Record<string, unknown>): ToolResult {
+  const repo = resolveRepo(args.repo_path as string | undefined);
+  if ("error" in repo) return error(repo.error);
+
+  try {
+    const result = renderReport({
+      repoRoot: repo.path,
+      open: false, // Never open the browser from inside MCP — just return the URL.
+      date: args.date as string | undefined,
+    });
+    return ok(
+      JSON.stringify({
+        url: result.url,
+        html_path: result.htmlPath,
+        entry_count: result.entryCount,
+      })
+    );
+  } catch (err) {
+    return error(`Failed to render dashboard: ${(err as Error).message}`);
   }
 }
 

@@ -62,7 +62,15 @@ This is the "since last standup" default — it survives weekends and days off.
 ### 2. Fetch git activity
 
 Call **`get_git_activity`** with `since_iso` and (optionally) `until_iso`.
-You'll get back commits, file stats, branch, and the resolved repo path.
+You'll get back commits, file stats, branch, and `_repo_root` — the
+absolute path the MCP server resolved.
+
+> **CRITICAL: capture `_repo_root` from this response and pass it as
+> `repo_path` to every subsequent tool call** (`save_impact_entry`,
+> `render_dashboard`, `get_history`). The MCP server caches it after
+> the first successful call, but threading it explicitly is the safe
+> belt-and-suspenders move and removes any chance the second tool call
+> resolves to a different directory.
 
 If there are no commits in the window: tell the user clearly and stop. Do
 NOT save an empty entry.
@@ -124,16 +132,20 @@ Example item:
 }
 ```
 
-### 7. Point the user at the dashboard
+### 7. Regenerate the rolling dashboard, then print its URL
 
-The rolling HTML dashboard at `<repo>/.git-impact/result.html` is the
-default visual output — it's regenerated automatically when the user runs
-`git-impact view`, and now includes today's entry because you just saved
-it. End your reply with that file URL on its own last line:
+Call **`render_dashboard`** with the same `repo_path`. It rewrites
+`.git-impact/result.html` so today's entry is included, and returns
+the `file://` URL.
+
+End your reply with that URL on its own last line so the user can
+⌘-click to open:
 
 ```
 🎯 file:///<absolute-repo-path>/.git-impact/result.html
 ```
+
+Don't try to open a browser yourself — printing the URL is enough.
 
 **Only if the user explicitly asked for a "presentation", "slide",
 "shareable", or "screenshot-friendly" output**, ALSO read

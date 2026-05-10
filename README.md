@@ -264,6 +264,7 @@ Available tools:
 | `get_last_standup_date` | Powers the "since last standup" default |
 | `save_impact_entry` | Persists a translation with provenance + refs |
 | `get_history` | Returns saved entries for a date range |
+| `render_dashboard` | Regenerates `.git-impact/result.html` and returns the file:// URL |
 | `update_context` | Updates `context.json` (company / glossary / privacy / token) |
 
 ---

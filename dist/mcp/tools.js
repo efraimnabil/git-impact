@@ -38,6 +38,7 @@ exports.handleTool = handleTool;
 const git_1 = require("../readers/git");
 const github_1 = require("../readers/github");
 const db_1 = require("../storage/db");
+const render_1 = require("../report/render");
 const repo_1 = require("./repo");
 // ─── Tool definitions ────────────────────────────────────────────────────────
 exports.TOOL_DEFINITIONS = [
@@ -157,6 +158,20 @@ exports.TOOL_DEFINITIONS = [
         },
     },
     {
+        name: "render_dashboard",
+        description: "Regenerate the rolling HTML dashboard at .git-impact/result.html from the " +
+            "saved history. Call this AFTER save_impact_entry so today's entry shows up. " +
+            "Returns the file:// URL — print it on the last line of your reply so the " +
+            "user can ⌘-click to open. Don't try to open the browser yourself.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo_path: { type: "string", description: "Override the repo path." },
+                date: { type: "string", description: "Optional ?date=YYYY-MM-DD focus to add to the URL." },
+            },
+        },
+    },
+    {
         name: "update_context",
         description: "Save personalization to this repo's .git-impact/context.json: " +
             "company description, manager priorities, technical glossary, GitHub token. " +
@@ -185,6 +200,7 @@ async function handleTool(name, args) {
         case "save_impact_entry": return handleSaveImpactEntry(args);
         case "get_last_standup_date": return handleGetLastStandupDate(args);
         case "get_history": return handleGetHistory(args);
+        case "render_dashboard": return handleRenderDashboard(args);
         case "update_context": return handleUpdateContext(args);
         default: return error(`Unknown tool: ${name}`);
     }
@@ -285,6 +301,26 @@ function handleGetHistory(args) {
     }
     catch (err) {
         return error(`Failed to read history: ${err.message}`);
+    }
+}
+function handleRenderDashboard(args) {
+    const repo = resolveRepo(args.repo_path);
+    if ("error" in repo)
+        return error(repo.error);
+    try {
+        const result = (0, render_1.renderReport)({
+            repoRoot: repo.path,
+            open: false, // Never open the browser from inside MCP — just return the URL.
+            date: args.date,
+        });
+        return ok(JSON.stringify({
+            url: result.url,
+            html_path: result.htmlPath,
+            entry_count: result.entryCount,
+        }));
+    }
+    catch (err) {
+        return error(`Failed to render dashboard: ${err.message}`);
     }
 }
 function handleUpdateContext(args) {

@@ -1,10 +1,13 @@
 /**
  * Repo path resolution — priority order:
  *
- *  1. Explicit arg passed by Claude (user said "~/code/my-app")
- *  2. Default repo saved in user context (set once, reused forever)
+ *  1. Explicit arg passed by the model ("~/code/my-app")
+ *  2. **Sticky cache** — the path we resolved last time on this process.
+ *     The skill calls 3-5 MCP tools per standup; resolving once and
+ *     reusing avoids the bug where get_git_activity finds a repo via
+ *     cwd but save_impact_entry — called moments later — gets a
+ *     different cwd and fails.
  *  3. Walk up from process.cwd() until a .git folder is found
- *     → works in Claude Code CLI where cwd = open project
  *  4. Fail with a clear message asking the user to set a default
  */
 
@@ -13,27 +16,44 @@ import * as fs from "fs";
 import * as process from "process";
 import * as os from "os";
 
+let stickyRepo: string | null = null;
+
+/** Reset the cached path. Used by tests; not part of the public API. */
+export function _resetStickyRepoForTests(): void {
+  stickyRepo = null;
+}
+
 export function resolveRepoPath(explicitPath?: string): { path: string; source: string } {
   // 1. Explicit arg — highest priority
   if (explicitPath) {
     const resolved = expandHome(explicitPath);
     assertIsGitRepo(resolved);
+    stickyRepo = resolved;
     return { path: resolved, source: "explicit" };
   }
 
-  // 2. Walk up from cwd — works when Claude Code Desktop opens a project folder
+  // 2. Sticky cache — within a single MCP server process, reuse the path
+  // we successfully resolved earlier. Critical because cwd may shift
+  // between tool calls and we don't want save_impact_entry to fail just
+  // because get_git_activity already worked.
+  if (stickyRepo && isGitRepo(stickyRepo)) {
+    return { path: stickyRepo, source: "sticky" };
+  }
+
+  // 3. Walk up from cwd — works when Claude Code opens a project folder
   const fromCwd = findGitRoot(process.cwd());
   if (fromCwd) {
+    stickyRepo = fromCwd;
     return { path: fromCwd, source: "cwd" };
   }
 
-  // 3. Nothing found
+  // 4. Nothing found
   throw new Error(
     "No git repository found.\n\n" +
-    "Set a default repo once with:\n" +
-    '  "set my default repo to /Users/you/code/my-project"\n\n' +
-    "Or tell me the path directly:\n" +
-    '  "do my standup for ~/code/my-project"'
+    "The MCP server's cwd is not inside a git repo, and no path was given.\n" +
+    "Tell me the absolute path:\n" +
+    '  "do my standup for ~/code/my-project"\n\n' +
+    "Once resolved, the path is cached for the rest of this MCP session."
   );
 }
 
