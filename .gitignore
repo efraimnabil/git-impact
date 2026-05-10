@@ -1,3 +1,31 @@
 node_modules/
 dist/
 *.db
+
+# Build artifacts
+*.tsbuildinfo
+
+# Vitest coverage reports
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local env files (never check these in)
+.env
+.env.local
+.env.*.local
+
+# git-impact's own per-machine standup HTML in this repo
+.git-impact/result.html
+.git-impact/standups/
