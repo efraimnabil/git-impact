@@ -80,7 +80,7 @@ function getDb(repoRoot: string): Database.Database {
     CREATE TABLE IF NOT EXISTS impact_entries (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       date        TEXT    NOT NULL,
-      repo_path   TEXT    NOT NULL,
+      repo_path   TEXT    NOT NULL DEFAULT '',
       repo_name   TEXT    NOT NULL,
       total_commits INTEGER NOT NULL DEFAULT 0,
       total_files   INTEGER NOT NULL DEFAULT 0,
@@ -94,8 +94,41 @@ function getDb(repoRoot: string): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_entries_repo ON impact_entries (repo_name);
   `);
 
+  // Schema migration: pre-Phase-1 dbs (created by the bash-skill era) are
+  // missing repo_path, files_summary, and raw_json. CREATE TABLE IF NOT EXISTS
+  // doesn't add those, so we have to ALTER TABLE explicitly. Idempotent —
+  // each ADD COLUMN runs only if the column isn't there yet.
+  migrateImpactEntriesSchema(db);
+
   _dbs.set(repoRoot, db);
   return db;
+}
+
+/**
+ * Bring an older `impact_entries` table up to the current schema by adding
+ * any columns that are missing. Defaults are chosen so old rows remain valid.
+ *
+ * Why this matters: a repo that ran git-impact before Phase 1 has a
+ * history.db with the original schema (date / repo_name / total_commits /
+ * total_files / items_json / created_at). New code writes the post-Phase-1
+ * shape and would fail with "table impact_entries has no column named
+ * repo_path" without this.
+ */
+function migrateImpactEntriesSchema(db: Database.Database): void {
+  const cols = db
+    .prepare(`PRAGMA table_info(impact_entries)`)
+    .all() as Array<{ name: string }>;
+  const have = new Set(cols.map((c) => c.name));
+
+  const migrations: Array<[string, string]> = [
+    ["repo_path",     `ALTER TABLE impact_entries ADD COLUMN repo_path TEXT NOT NULL DEFAULT ''`],
+    ["files_summary", `ALTER TABLE impact_entries ADD COLUMN files_summary TEXT NOT NULL DEFAULT ''`],
+    ["raw_json",      `ALTER TABLE impact_entries ADD COLUMN raw_json TEXT NOT NULL DEFAULT '{}'`],
+  ];
+
+  for (const [col, sql] of migrations) {
+    if (!have.has(col)) db.exec(sql);
+  }
 }
 
 // ─── Context (JSON file, committable) ────────────────────────────────────────
