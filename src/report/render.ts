@@ -50,6 +50,8 @@ export function renderReport(opts: RenderOptions): RenderResult {
         summary: (it.summary ?? it.title ?? it.text ?? it.headline ?? "—") as string,
         impact: it.impact as string | undefined,
         technical_note: (it.technical_note ?? it.note) as string | undefined,
+        provenance: it.provenance as ReportItem["provenance"] | undefined,
+        refs: Array.isArray(it.refs) ? (it.refs as string[]) : undefined,
       };
     }),
   }));

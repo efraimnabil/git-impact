@@ -9,6 +9,8 @@ export interface ReportItem {
   summary: string;
   impact?: string;
   technical_note?: string;
+  provenance?: "pr" | "commit_body" | "commit_message" | "ticket" | "inferred";
+  refs?: string[];
 }
 
 export interface ReportEntry {
@@ -142,6 +144,29 @@ export function renderReportHtml(entries: ReportEntry[], repoName: string): stri
     margin-top: 4px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
+  .item .meta {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: transparent;
+  }
+  .chip.inferred {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .chip.ref {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
   footer {
     color: var(--muted);
     font-size: 12px;
@@ -197,9 +222,20 @@ export function renderReportHtml(entries: ReportEntry[], repoName: string): stri
         ? '<div class="note">' + escape(item.technical_note) + '</div>' : '';
       const impact = item.impact
         ? '<div class="impact">' + escape(item.impact) + '</div>' : '';
+      const chips = [];
+      if (item.provenance === "inferred") {
+        chips.push('<span class="chip inferred" title="Impact inferred — not stated explicitly in PR or commit body">inferred</span>');
+      }
+      if (Array.isArray(item.refs)) {
+        for (const ref of item.refs) {
+          chips.push('<span class="chip ref">' + escape(ref) + '</span>');
+        }
+      }
+      const meta = chips.length
+        ? '<div class="meta">' + chips.join("") + '</div>' : '';
       return '<div class="item ' + cls + '">' +
         '<div class="summary">' + escape(item.summary) + '</div>' +
-        impact + note +
+        impact + note + meta +
         '</div>';
     }).join("");
 

@@ -2,13 +2,23 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
 import {
-  CLAUDE_SKILL,
   CLAUDE_MD_BLOCK,
   COPILOT_INSTRUCTIONS,
   CURSOR_RULES,
   GEMINI_COMMAND,
   CONTEXT_TEMPLATE,
 } from "./templates";
+
+/**
+ * The shipped `skill/` directory inside the published npm package.
+ * Resolved relative to this file's location at runtime — works whether
+ * we're running from `dist/init/installer.js` (published) or `src/init/`.
+ */
+function shippedSkillDir(): string {
+  // dist/init/installer.js → ../../skill
+  // src/init/installer.ts  → ../../skill
+  return path.resolve(__dirname, "..", "..", "skill");
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -98,7 +108,27 @@ function installIntegration(repoRoot: string, integration: Integration): Install
 function installClaude(repoRoot: string): InstalledFile[] {
   const skillDir = path.join(repoRoot, ".claude", "skills", "git-impact");
   fs.mkdirSync(skillDir, { recursive: true });
-  return [writeFile(path.join(skillDir, "SKILL.md"), CLAUDE_SKILL)];
+  fs.mkdirSync(path.join(skillDir, "references"), { recursive: true });
+
+  const src = shippedSkillDir();
+  const installed: InstalledFile[] = [];
+
+  // Copy SKILL.md and any reference files from the shipped skill directory.
+  installed.push(
+    copyFile(path.join(src, "SKILL.md"), path.join(skillDir, "SKILL.md"))
+  );
+  const refsSrc = path.join(src, "references");
+  if (fs.existsSync(refsSrc)) {
+    for (const file of fs.readdirSync(refsSrc)) {
+      installed.push(
+        copyFile(
+          path.join(refsSrc, file),
+          path.join(skillDir, "references", file)
+        )
+      );
+    }
+  }
+  return installed;
 }
 
 function installCopilot(repoRoot: string): InstalledFile[] {
@@ -260,6 +290,12 @@ function writeFile(filePath: string, content: string): InstalledFile {
   const existed = fs.existsSync(filePath);
   fs.writeFileSync(filePath, content, "utf-8");
   return { path: filePath, action: existed ? "updated" : "created" };
+}
+
+function copyFile(srcPath: string, destPath: string): InstalledFile {
+  const existed = fs.existsSync(destPath);
+  fs.copyFileSync(srcPath, destPath);
+  return { path: destPath, action: existed ? "updated" : "created" };
 }
 
 function loadExistingContext(repoRoot: string): RepoContext | null {

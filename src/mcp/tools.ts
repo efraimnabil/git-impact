@@ -1,5 +1,5 @@
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { readGitActivity, startOfDay, startOfDaysAgo } from "../readers/git";
+import { readGitActivity, startOfDay } from "../readers/git";
 import { readGitHubActivity } from "../readers/github";
 import {
   loadContext,
@@ -7,6 +7,7 @@ import {
   saveEntry,
   getEntriesForDaysAgo,
   getEntriesForRange,
+  getLastEntryDate,
   ImpactItem,
   UserContext,
 } from "../storage/db";
@@ -58,8 +59,11 @@ export const TOOL_DEFINITIONS: Tool[] = [
   {
     name: "save_impact_entry",
     description:
-      "Persist a completed impact translation to this repo's local history (.git-impact/history.db). " +
-      "Call after translating commits into business impact bullets.",
+      "Persist a completed impact translation to this repo's local history " +
+      "(.git-impact/history.db). Always call this after translating commits into " +
+      "business impact bullets — replaces any prior bash/sqlite3 invocations. " +
+      "Each item must include a `provenance` so the UI can mark inferred bullets " +
+      "differently from claims grounded in PRs or commit bodies.",
     inputSchema: {
       type: "object" as const,
       required: ["date", "repo_name", "items"],
@@ -75,15 +79,47 @@ export const TOOL_DEFINITIONS: Tool[] = [
           description: "The translated impact bullets.",
           items: {
             type: "object",
-            required: ["status", "summary", "impact"],
+            required: ["status", "summary", "provenance"],
             properties: {
-              status: { type: "string", enum: ["done", "in_progress"] },
-              summary: { type: "string" },
-              impact: { type: "string" },
-              technical_note: { type: "string" },
+              status: {
+                type: "string",
+                enum: ["done", "in_progress", "blocked"],
+                description: "Outcome state of the work item.",
+              },
+              summary: { type: "string", description: "Plain-English what." },
+              impact: { type: "string", description: "Why it matters — who/what it unblocks." },
+              technical_note: { type: "string", description: "Small grey aside (file refs, PR #s)." },
+              provenance: {
+                type: "string",
+                enum: ["pr", "commit_body", "commit_message", "ticket", "inferred"],
+                description:
+                  "Where the impact claim came from. Use 'pr' if quoted from a PR description, " +
+                  "'commit_body' if from a multi-line commit body, 'commit_message' if only the " +
+                  "subject line supported it, 'ticket' if pulled from a linked Linear/Jira ticket, " +
+                  "'inferred' if you guessed without explicit text. NEVER invent a non-inferred provenance.",
+              },
+              refs: {
+                type: "array",
+                items: { type: "string" },
+                description: "Supporting refs e.g. ['PR #142', 'a1b2c3d', 'ENG-1234'].",
+              },
             },
           },
         },
+      },
+    },
+  },
+  {
+    name: "get_last_standup_date",
+    description:
+      "Return the date (YYYY-MM-DD) of the most recently saved standup entry, or null " +
+      "if none exists yet. Call this at the start of every standup to default the " +
+      "lookback window to 'since last standup' — so days off, weekends, and holidays " +
+      "don't drop work on the floor.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repo_path: { type: "string", description: "Override the repo path." },
       },
     },
   },
@@ -138,6 +174,7 @@ export async function handleTool(
     case "get_git_activity":     return handleGetGitActivity(args);
     case "get_github_activity":  return handleGetGitHubActivity(args);
     case "save_impact_entry":    return handleSaveImpactEntry(args);
+    case "get_last_standup_date":return handleGetLastStandupDate(args);
     case "get_history":          return handleGetHistory(args);
     case "update_context":       return handleUpdateContext(args);
     default:                     return error(`Unknown tool: ${name}`);
@@ -213,6 +250,18 @@ function handleSaveImpactEntry(args: Record<string, unknown>): ToolResult {
     return ok(JSON.stringify({ saved: true, id, repo: repo.path }));
   } catch (err) {
     return error(`Failed to save entry: ${(err as Error).message}`);
+  }
+}
+
+function handleGetLastStandupDate(args: Record<string, unknown>): ToolResult {
+  const repo = resolveRepo(args.repo_path as string | undefined);
+  if ("error" in repo) return error(repo.error);
+
+  try {
+    const date = getLastEntryDate(repo.path);
+    return ok(JSON.stringify({ last_standup_date: date }));
+  } catch (err) {
+    return error(`Failed to read last standup date: ${(err as Error).message}`);
   }
 }
 

@@ -1,278 +1,188 @@
 ---
 name: git-impact
 description: >
-  Translates git commits into plain-English business impact bullets — ideal for
-  daily standups, manager updates, and end-of-quarter performance reviews.
-  Use this skill whenever the user says anything like: "do my standup",
-  "what did I work on today", "translate my commits", "summarize my git activity",
-  "write my standup update", "what should I say in standup", "git-impact",
-  "/git-impact", "show my impact", "translate today's work", "what did I ship",
-  "generate a performance review", "what have I done this week/month/quarter",
-  "review my commits". Also trigger for "since yesterday", "last 3 days commits",
-  or any request to turn technical git output into something a manager can read.
+  Translates git commits into plain-English business impact bullets. Use this
+  skill when the user says any of: "do my standup", "/git-impact", "what did I
+  ship today", "what did I work on", "translate my commits", "summarize my
+  git activity", "write my standup update", "what should I say in standup",
+  "show my impact", "since yesterday", "since 3d", "since last standup",
+  "what have I done this week / month / quarter", "generate a performance
+  review", "performance review prep", "review my commits", "what's blocked",
+  "weekly summary". Trigger on any request to turn raw git output into
+  something a non-technical manager can read. The skill orchestrates MCP
+  tools (get_git_activity, save_impact_entry, get_history, etc.) — it does
+  not run sqlite3 or other DB commands directly.
 ---
 
 # git-impact
 
-Translate git commits into plain-English business impact for standups, manager
-updates, and performance reviews — without an API key. You do the translation
-inline using bash to read git data and a per-repo context file for personalization.
+You translate git commits into plain-English business impact for standups,
+manager updates, and performance review prep. Your job is **orchestration**:
+call the MCP tools provided by the `git-impact` server, apply the translation
+rules, and produce the output. The MCP server owns all data access (git, DB).
+You own the language.
+
+If the `git-impact` MCP server is not available in this conversation, fall
+back to the bash steps in `references/fallback-bash.md` — but the MCP path
+is preferred everywhere it works.
 
 ---
 
-## Sub-commands
+## Pick a mode from the user's message
 
-Parse the user's message to determine which mode to run:
-
-| What the user says | Mode |
+| User says | Mode |
 |---|---|
-| `do my standup`, `today`, `/git-impact`, no args | **today** |
-| `since yesterday`, `since 3d`, `since 2026-05-01` | **since \<when\>** |
-| `review`, `performance review`, `last 30 days`, `Q2 review` | **review** |
-| `init`, `set up context`, `configure for this repo` | **init** |
+| "do my standup", "today", "/git-impact", no args | **standup** (default) |
+| "since yesterday", "since 3d", "since 2026-05-01" | **standup** with explicit `since_iso` |
+| "review", "performance review", "last 90 days", "Q2 review" | **review** |
+| "init", "set up context", "configure for this repo" | **init** |
+
+If the message is ambiguous, default to **standup**.
 
 ---
 
-## Step 1 — Find the repo root
+## Mode: standup
 
-Run this to find the git root from wherever you are:
+### 1. Resolve the lookback window
 
-```bash
-git rev-parse --show-toplevel 2>/dev/null
+- If the user said an explicit "since X", convert to an ISO timestamp and use it.
+- Otherwise call **`get_last_standup_date`**. If it returns a date, use the
+  start of the day after that date as `since_iso`. If it returns null,
+  default to start-of-today.
+
+This is the "since last standup" default — it survives weekends and days off.
+
+### 2. Fetch git activity
+
+Call **`get_git_activity`** with `since_iso` and (optionally) `until_iso`.
+You'll get back commits, file stats, branch, and the resolved repo path.
+
+If there are no commits in the window: tell the user clearly and stop. Do
+NOT save an empty entry.
+
+### 3. Optional: enrich with GitHub PR data
+
+If the user has a `github_token` saved in their context (the
+`get_git_activity` response or a prior `get_github_activity` call will tell
+you), call **`get_github_activity`** to pull PR titles and descriptions.
+PR descriptions are the single best source for accurate "why it matters"
+text — strongly prefer them over inference.
+
+### 4. Translate
+
+Read **`references/translation-rules.md`** for the prompt-engineering details.
+Key rules at a glance:
+
+- **What + why**, not what + how
+- **Apply the glossary** from `context.json` (returned by the context resource
+  or visible in `get_git_activity` output)
+- **Provenance is mandatory** — every saved bullet gets `pr` / `commit_body` /
+  `commit_message` / `ticket` / `inferred`
+- **Group related commits** into one bullet, not many
+- **2-5 bullets total**, never more
+
+### 5. Print the user-facing output
+
+```
+📅 [Day, Date or date range]
+
+✅ [Summary]
+   → [Why it matters]
+
+⏳ In progress: [What]
+   → [Expected outcome]
+
+🚫 Blocked: [What]   (only if applicable)
+   → [What's needed]
+
+📁 [N] files across [areas]
+   [N] commit(s) on [branch]
 ```
 
-If it fails, tell the user: *"No git repository found in the current directory. Open
-a project folder first, or `cd` into a repo."* Stop there.
+### 6. Save to history
 
-Store the result as `REPO_ROOT`.
+Call **`save_impact_entry`** with the structured items including
+`provenance` for each. The MCP tool handles the SQLite write — never run
+`sqlite3` directly. Required fields per item: `status`, `summary`,
+`provenance`. Recommended: `impact`, `refs`.
 
----
-
-## Step 2 — Load context (if it exists)
-
-```bash
-cat "$REPO_ROOT/.git-impact/context.json" 2>/dev/null || echo "NONE"
-```
-
-If the file exists, parse it. It looks like:
-
+Example item:
 ```json
 {
-  "companyDescription": "B2B SaaS for workforce analytics",
-  "managerPriorities": "Shipping on time, not breaking prod",
-  "glossary": {
-    "RLS": "data security layer",
-    "TabPFN": "AI predictions",
-    "MFA": "login security"
-  }
+  "status": "done",
+  "summary": "Shipped multi-tenant data isolation",
+  "impact": "Unblocks SOC2 sign-off, prevents cross-company data leaks",
+  "provenance": "pr",
+  "refs": ["PR #142", "ENG-1234"]
 }
 ```
 
-Use this to personalise your translation — apply the glossary and frame impact
-around what the manager cares about. If the file doesn't exist, use general
-technical language and suggest running `init` at the end.
+### 7. Compose a bespoke HTML presentation
 
----
+Read **`references/html-template.md`** and use your `Write` tool to create
+`<repo>/.git-impact/standups/YYYY-MM-DD.html` plus update the
+`standups/index.html`. The rolling dashboard at `<repo>/.git-impact/result.html`
+is updated automatically by the report renderer the user can run with
+`git-impact view`.
 
-## Mode: today / since \<when\>
-
-### Fetch commits
-
-For **today**:
-```bash
-git -C "$REPO_ROOT" log \
-  --since="$(date '+%Y-%m-%d') 00:00:00" \
-  --format="%h|%s|%b|%an|%ad" \
-  --date=short \
-  HEAD
-```
-
-For **since \<when\>** — convert the user's input to a git `--since` value:
-- `yesterday` → `--since="yesterday 00:00:00"`
-- `3d` → `--since="3 days ago 00:00:00"`
-- `2026-05-01` → `--since="2026-05-01 00:00:00"`
-
-### Fetch files changed
-
-```bash
-FIRST=$(git -C "$REPO_ROOT" log --since="..." --format="%h" HEAD | tail -1)
-git -C "$REPO_ROOT" diff --stat "$FIRST"^ HEAD 2>/dev/null || \
-  git -C "$REPO_ROOT" show --stat "$FIRST" 2>/dev/null
-```
-
-### Translate
-
-If there are no commits, say so clearly and stop.
-
-Otherwise translate into **2–5 bullet points**. Follow these rules:
-
-1. **What + why, not what + how.** Each bullet must say what was accomplished
-   AND why it matters to the business. "Fixed a bug in the auth middleware" is
-   useless to a manager. "Fixed login failures for admin users — unblocks the
-   Q2 portal launch" is useful.
-
-2. **Apply the glossary.** Replace every technical term listed in context.json
-   with its plain-English equivalent. If no glossary, infer from context.
-
-3. **Never hallucinate impact.** If you can't infer the business reason, say
-   "technical foundation work for [area]" rather than inventing an outcome.
-
-4. **Group related commits.** Three commits all touching auth tell one story —
-   write one bullet, not three.
-
-5. **WIP / draft commits** get `⏳ In progress:` and state what the expected
-   outcome is, not what was done so far.
-
-6. **Be specific.** "Improved performance" is vague. "Reduced login latency
-   by ~40%" is specific. Use whatever numbers exist in the commit messages.
-
-### Output format
+End your reply with the file URL on its own last line:
 
 ```
-📅 [Day, Date]
-
-✅ [Plain-English summary of what was accomplished]
-   → [Why it matters — who it unblocks, what risk it reduces, what it enables]
-
-⏳ In progress: [What is being worked on]
-   → [Expected outcome when complete]
-
-📁 [N] files changed across [brief description of areas touched]
-   [N] commit(s) on [branch name]
+🎯 file:///<absolute-repo-path>/.git-impact/standups/YYYY-MM-DD.html
 ```
-
-### Save to history
-
-After printing the output, silently save to `.git-impact/history.db`:
-
-```bash
-mkdir -p "$REPO_ROOT/.git-impact"
-grep -qxF '.git-impact/history.db' "$REPO_ROOT/.gitignore" 2>/dev/null || \
-  printf '\n# git-impact local history (private, per-machine)\n.git-impact/history.db\n' \
-  >> "$REPO_ROOT/.gitignore"
-
-sqlite3 "$REPO_ROOT/.git-impact/history.db" "
-CREATE TABLE IF NOT EXISTS impact_entries (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  date          TEXT NOT NULL,
-  repo_name     TEXT NOT NULL,
-  total_commits INTEGER NOT NULL DEFAULT 0,
-  total_files   INTEGER NOT NULL DEFAULT 0,
-  items_json    TEXT NOT NULL DEFAULT '[]',
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
-INSERT INTO impact_entries (date, repo_name, total_commits, total_files, items_json)
-VALUES ('$(date +%Y-%m-%d)', '$(basename $REPO_ROOT)', $COMMIT_COUNT, $FILE_COUNT, '$ITEMS_JSON');
-"
-```
-
-If `sqlite3` is not available, skip silently.
-
-### Build a polished HTML presentation
-
-After saving to history, **use your Write tool to create a bespoke HTML
-presentation** for today's standup. This is not a generic template — each day's
-file should be tailored to the actual content, with custom layout, charts, or
-diagrams when they help.
-
-**Where to write:**
-- `$REPO_ROOT/.git-impact/standups/YYYY-MM-DD.html` — today's file
-- `$REPO_ROOT/.git-impact/standups/index.html` — list of all standups (regenerate it)
-
-**Stack (all CDN, no install):**
-- Tailwind CSS via `<script src="https://cdn.tailwindcss.com">`
-- Inter font via Google Fonts
-- Chart.js (`https://cdn.jsdelivr.net/npm/chart.js`) only if there are real numbers worth charting
-- Mermaid (`https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs`) for flow/architecture diagrams when relevant
-
-**Required structure:**
-1. **Hero** — date label + a bold, plain-English headline that captures the day
-   ("Shipped safety analytics, hardened tenant isolation" — not "9 commits")
-2. **Stats grid** — 3-4 metric cards (commits, files, PRs merged, areas touched)
-3. **Achievement cards** — one per ✅ item with status pill, title, summary,
-   "→ Why it matters" line, and tags (PR #, area, file count)
-4. **Optional visual** — only when the content warrants one (a Mermaid flow
-   diagram for architecture changes, a Chart.js chart for ratios/comparisons,
-   a code-style block for a key formula). Skip if forced.
-5. **Footer** — file count, branch, link back to `index.html`
-
-**Design language:**
-- Dark theme by default (`bg-slate-950`), generous spacing, max width 4xl
-- Cards: `bg-slate-900/50 border border-slate-800 rounded-2xl p-6`
-- Status pills: emerald for done, amber for in-progress, rose for blocked
-- Print-friendly via `@media print`
-
-**Status pill colors:**
-- ✅ Shipped → `bg-emerald-500/20 text-emerald-400`
-- ⏳ In Progress → `bg-amber-500/20 text-amber-400`
-- 🚫 Blocked → `bg-rose-500/20 text-rose-400`
-
-After writing both files, print the file URL on the very last line of your reply:
-
-```
-🎯 file://$REPO_ROOT/.git-impact/standups/YYYY-MM-DD.html
-```
-
-Replace `$REPO_ROOT` with the real absolute path so the user can ⌘-click.
 
 ---
 
 ## Mode: review
 
-Fetch saved history and synthesise a performance review.
+1. Parse the period from the user's message:
+   - "last 30 days" / "30d" → `last_days: 30`
+   - "last 90 days" / "90d" / no arg → `last_days: 90`
+   - "Q2-2026" → `from_date: 2026-04-01`, `to_date: 2026-06-30`
+2. Call **`get_history`** with the parsed window.
+3. If no entries returned: tell the user
+   *"No saved history yet for this period. Use the standup mode daily to
+   build up history, then come back."* and stop.
+4. Synthesise themes (Features, Reliability, Security, Code review,
+   Infrastructure). Only include themes that apply.
+5. Frame as **performance review prep** (evidence pack), not a finished
+   review — bullets should include dates and refs the user can paste into
+   their own writing.
 
-Parse the period from the user's message:
-- `last 30 days` / `30d` → last 30 days
-- `last 90 days` / `90d` → last 90 days (default)
-- `Q2-2026` → April 1 – June 30, 2026
-
-```bash
-sqlite3 "$REPO_ROOT/.git-impact/history.db" \
-  "SELECT date, repo_name, total_commits, items_json
-   FROM impact_entries
-   WHERE date >= '$FROM' AND date <= '$TO'
-   ORDER BY date ASC;" 2>/dev/null
+Output:
 ```
+Performance Review Prep — [Period]
 
-If the DB doesn't exist or returns nothing: *"No saved history found for this
-period. Use the standup mode daily to build up history, then come back."*
-
-Otherwise synthesise:
-
-```
-Performance Review — [Period]
-
-[One headline sentence — biggest contribution this period]
+[One headline sentence — biggest contribution]
 
 🚀 [High-impact theme]
-   • Specific achievement...
+   • Specific achievement [date, refs]
 
 ✅ [Medium-impact theme]
-   • Specific achievement...
+   • ...
 
 🔧 [Lower-impact theme]
    • ...
 
----
 📊 [N] commits across [N] working days
 ```
-
-Group by theme (Features shipped, Reliability, Security, Code review,
-Infrastructure). Only include themes that apply.
 
 ---
 
 ## Mode: init
 
-Ask the user three questions one at a time:
+Ask one at a time:
 
 1. *"What does your company/product do? (1–2 sentences)"*
 2. *"What does your manager care most about?"*
-3. *"Any technical terms to translate? Format: RLS=data security, MFA=login security (leave blank to skip)"*
+3. *"Technical terms to translate? Format: RLS=data security, MFA=login security (blank to skip)"*
 
-Then write `.git-impact/context.json` and tell the user:
-*"Saved to `.git-impact/context.json`. Commit this to share the glossary with
-your team. history.db is gitignored automatically."*
+Then call **`update_context`** with the answers. Tell the user:
+*"Saved to `.git-impact/context.json`. Commit this to share the glossary with your team."*
+
+If the install also wrote slash command files for other editors (Cursor,
+Copilot, Gemini), point that out so they know the same workflow works
+elsewhere.
 
 ---
 
@@ -280,6 +190,11 @@ your team. history.db is gitignored automatically."*
 
 - Write for a non-technical manager. No jargon that isn't in the glossary.
 - Short sentences. No filler. Skip "this change" / "this commit" constructions.
-- Confident — if you know the impact, state it. If not, use
-  "technical foundation work for X", never hedge with "might potentially".
+- Confident — if you know the impact, state it. If you guessed, label
+  `provenance: inferred` and use phrases like "technical foundation work
+  for X". Never hedge with "might potentially".
 - 2 accurate bullets beat 5 vague ones.
+
+For prompt details, anti-patterns, and the full output format, see
+`references/translation-rules.md`. For the bespoke daily HTML, see
+`references/html-template.md`.

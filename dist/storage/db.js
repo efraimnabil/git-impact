@@ -40,6 +40,7 @@ exports.loadContext = loadContext;
 exports.saveContext = saveContext;
 exports.saveEntry = saveEntry;
 exports.getEntriesForRange = getEntriesForRange;
+exports.getLastEntryDate = getLastEntryDate;
 exports.getEntriesForDaysAgo = getEntriesForDaysAgo;
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path = __importStar(require("path"));
@@ -130,6 +131,17 @@ function getEntriesForRange(fromDate, toDate, repoRoot) {
         .prepare(`SELECT * FROM impact_entries WHERE date >= ? AND date <= ? ORDER BY date ASC`)
         .all(fromDate, toDate);
     return rows.map(rowToEntry);
+}
+/**
+ * Returns the most recent saved entry's date (YYYY-MM-DD), or null if none exists.
+ * Used to power "since last standup" — the default mode after Phase 1.
+ */
+function getLastEntryDate(repoRoot) {
+    const db = getDb(repoRoot);
+    const row = db
+        .prepare(`SELECT date FROM impact_entries ORDER BY date DESC, id DESC LIMIT 1`)
+        .get();
+    return row?.date ?? null;
 }
 function getEntriesForDaysAgo(days, repoRoot) {
     const cutoff = new Date();
