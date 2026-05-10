@@ -64,7 +64,9 @@ export const TOOL_DEFINITIONS: Tool[] = [
       "(.git-impact/history.db). Always call this after translating commits into " +
       "business impact bullets — replaces any prior bash/sqlite3 invocations. " +
       "Each item must include a `provenance` so the UI can mark inferred bullets " +
-      "differently from claims grounded in PRs or commit bodies.",
+      "differently from claims grounded in PRs or commit bodies. " +
+      "ALWAYS pass `repo_path` — use the `_repo_root` value returned by your " +
+      "earlier `get_git_activity` call, never rely on cwd auto-detection here.",
     inputSchema: {
       type: "object" as const,
       required: ["date", "repo_name", "items"],
