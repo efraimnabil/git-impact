@@ -1,6 +1,6 @@
 {
   "name": "git-impact",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Translate your git commits into plain-English business impact — runs inside your AI editor, no API key.",
   "author": "Efraim Nafady",
   "license": "MIT",
