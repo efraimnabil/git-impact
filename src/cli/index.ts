@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name("git-impact")
   .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-  .version("0.6.1");
+  .version("0.6.2");
 
 // ─── init ─────────────────────────────────────────────────────────────────────
 
