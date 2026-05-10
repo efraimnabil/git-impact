@@ -1,17 +1,17 @@
 # git-impact
 
-Translate your git commits into plain-English business impact — for standups, manager updates, and performance reviews.
+Translate your git commits into plain-English business impact — for standups, manager updates, and performance review prep.
 
 ```
 📅 Thursday, May 8, 2026
 
-✅ Shipped secure multi-tenant data access layer
+✅ Shipped secure multi-tenant data access layer       [PR #142]
    → Prevents cross-company data leaks. Required for SOC2 compliance sign-off.
 
-✅ Fixed login failures for admin users
+✅ Fixed login failures for admin users                [a1b2c3d, ENG-431]
    → Unblocks Q2 portal launch, was blocking 3 engineers.
 
-⏳ In progress: Refactoring authentication flow
+⏳ In progress: Refactoring authentication flow        [inferred]
    → Will reduce login latency by ~40%, targeting end of week.
 
 📁 6 files changed across auth + database layers
@@ -32,7 +32,7 @@ npx git-impact init
 
 [![npm version](https://img.shields.io/npm/v/git-impact.svg)](https://www.npmjs.com/package/git-impact)
 
-The wizard asks four questions, then self-installs into the repo:
+The wizard auto-detects which AI editors you already use and installs for them. Three short questions, then it self-installs:
 
 ```
   git-impact init
@@ -51,10 +51,11 @@ The wizard asks four questions, then self-installs into the repo:
   Format: "RLS=data security, MFA=login security"
   >
 
-  Which AI tools do you use? (comma-separated, or "all")
+  Which AI editors should I install for? (comma-separated, or "all")
   Options: claude, copilot, cursor, gemini
-  [default: claude]
-  > all
+  Detected in this repo: claude, cursor
+  [press Enter to use detected]
+  >
 ```
 
 Then it creates everything and tells you what it did:
@@ -66,18 +67,17 @@ Then it creates everything and tells you what it did:
   ✅  .git-impact/context.json
   ✅  .gitignore
   ✅  .claude/skills/git-impact/SKILL.md
-  ✅  .github/instructions/git-impact.instructions.md
+  ✅  .claude/skills/git-impact/references/translation-rules.md
+  ✅  .claude/skills/git-impact/references/html-template.md
   ✅  .cursor/rules/git-impact.mdc
-  ✅  .gemini/commands/git-impact.md
   ✅  CLAUDE.md
   ✅  .git-impact/manifest.json
 
   Next steps:
-  1. git add .git-impact/context.json .claude/ && git commit -m "chore: add git-impact"
-  2. In Claude Code, say: "do my standup"
+  1. git add .git-impact/context.json && git commit -m "chore: add git-impact"
+  2. In Claude Code: type "/git-impact" or say "do my standup"
+  3. After a few standups: `git-impact view` to see the rolling dashboard
 ```
-
-After that, open the project in Claude Code and you're ready to go.
 
 ---
 
@@ -87,25 +87,35 @@ Once installed, just talk to your AI editor naturally:
 
 | What you say | What happens |
 |---|---|
-| `do my standup` | Translates today's commits |
-| `git-impact since 3d` | Looks back 3 days |
+| `/git-impact` or `do my standup` | Translates commits since your last standup (survives weekends) |
+| `since yesterday`, `since 3d`, `since 2026-05-01` | Explicit lookback window |
 | `what did I ship this week?` | Looks back 7 days |
-| `generate a performance review` | Synthesises the last 90 days |
+| `generate a performance review` | Synthesises history into review-prep evidence |
+| `make a presentation for today` | Adds a bespoke shareable HTML page (opt-in) |
 | `set up context for this repo` | Re-runs the init questions inline |
 
-Works in **Claude Code**, **GitHub Copilot**, **Cursor**, and **Gemini CLI** — each editor gets its own instruction file.
+Works in **Claude Code**, **GitHub Copilot**, **Cursor**, and **Gemini CLI**. Claude Code and Gemini CLI get the full agentic experience (the skill auto-runs the MCP tools); Cursor and Copilot get the same instructions as paste-into-chat fallbacks.
 
 ---
 
 ## How it works
 
-git-impact reads your commits with `git log`, loads the team glossary from `.git-impact/context.json`, and translates them into business language. The AI editor does the translation inline — no separate process, no API key.
+git-impact ships two things: a Claude Code **skill** that handles the prompting, and an **MCP server** that exposes typed data tools (git activity, history, context). The skill calls the MCP tools — no `sqlite3` shelling, no hand-rolled SQL.
 
 ```
-your commits  →  git log  →  context.json glossary  →  AI translation  →  standup
+your commits  →  MCP get_git_activity  →  privacy redaction  →  AI translation
+                          ↓
+              MCP save_impact_entry (with provenance + refs)
+                          ↓
+              .git-impact/result.html (rolling dashboard)
 ```
 
-History is saved locally to `.git-impact/history.db` (SQLite, gitignored) so performance reviews can synthesise weeks or months of daily standups.
+**Two safeguards built in:**
+
+- **Privacy redaction** (default-on) — filenames matching `.env*`, `.aws/`, `.ssh/`, `*credentials*`, `*secret*`, `*.pem`, `*.key` get replaced with `[redacted-secret-file]` before they reach the model. Obvious-looking secret values in commit bodies (Stripe keys, AWS access key ids, GitHub PATs, Slack tokens, JWTs) become `[redacted-secret]`.
+- **Per-bullet provenance** — every translated bullet is tagged `pr` / `commit_body` / `commit_message` / `ticket` / `inferred`. Inferred bullets surface with an amber chip in the HTML report so you (and your manager) can tell what's grounded vs. guessed.
+
+History is saved locally to `.git-impact/history.db` (SQLite, gitignored) so review-prep can synthesise weeks or months of standups.
 
 ---
 
@@ -115,32 +125,37 @@ History is saved locally to `.git-impact/history.db` (SQLite, gitignored) so per
 your-project/
 ├── .claude/
 │   └── skills/git-impact/
-│       └── SKILL.md                          # Claude Code skill
+│       ├── SKILL.md                            # Workflow (orchestrates MCP tools)
+│       └── references/
+│           ├── translation-rules.md            # Loaded on demand
+│           └── html-template.md                # Loaded on demand
 ├── .github/
 │   └── instructions/
-│       └── git-impact.instructions.md        # GitHub Copilot
+│       └── git-impact.instructions.md          # GitHub Copilot
 ├── .cursor/
 │   └── rules/
-│       └── git-impact.mdc                    # Cursor
+│       └── git-impact.mdc                      # Cursor
 ├── .gemini/
 │   └── commands/
-│       └── git-impact.md                     # Gemini CLI
+│       └── git-impact.md                       # Gemini CLI
 ├── .git-impact/
-│   ├── context.json                          # Team glossary  ← commit this
-│   ├── manifest.json                         # Install record ← commit this
-│   └── history.db                            # Local history  ← gitignored
-└── CLAUDE.md                                 # Usage reminder block (managed)
+│   ├── context.json                            # Team glossary  ← commit this
+│   ├── manifest.json                           # Install record ← commit this
+│   ├── history.db                              # Local history  ← gitignored
+│   ├── result.html                             # Rolling dashboard ← gitignored
+│   └── standups/YYYY-MM-DD.html                # Bespoke presentations (opt-in)
+└── CLAUDE.md                                   # Usage reminder block (managed)
 ```
 
-**Commit everything except `history.db`.** Your teammates get the glossary and AI instructions automatically when they clone or pull.
+**Commit the SKILL files and `context.json`. Everything else stays local.**
 
-Re-running `npx git-impact init` is safe — it updates existing files without creating duplicates.
+Re-running `npx git-impact init` is safe — it updates existing files in place.
 
 ---
 
 ## context.json
 
-The glossary file lives at `.git-impact/context.json`. Commit it so everyone on the team gets the same translation:
+Lives at `.git-impact/context.json`. Commit it so everyone on the team gets the same translation:
 
 ```json
 {
@@ -150,11 +165,16 @@ The glossary file lives at `.git-impact/context.json`. Commit it so everyone on 
     "RLS": "data security layer",
     "MFA": "login security",
     "TabPFN": "AI predictions"
+  },
+  "privacy": {
+    "redact": true,
+    "filePatterns": ["*internal-only*"],
+    "valuePatterns": ["MY_COMPANY_NAME"]
   }
 }
 ```
 
-You can edit it by hand or re-run `git-impact init` to update it through the wizard.
+The `privacy` block is optional — defaults work for most teams. Set `redact: false` to disable the filter, or extend the patterns to catch internal names / customer identifiers.
 
 ---
 
@@ -164,39 +184,40 @@ The skill follows these rules to keep output useful rather than vague:
 
 1. **What + why, not what + how** — "Fixed login failures for admin users → unblocks Q2 launch" not "updated auth middleware"
 2. **Apply the glossary** — every term in `context.json` is replaced with its plain-English equivalent
-3. **Never hallucinate** — if impact can't be inferred, says "technical foundation work for [area]"
+3. **Provenance is mandatory** — every saved bullet is tagged `pr` / `commit_body` / `commit_message` / `ticket` / `inferred`. Inferred bullets render with an amber chip so the reader can spot what was grounded vs guessed.
 4. **Group related commits** — four auth commits become one bullet, not four
-5. **Flag WIP** — draft/WIP commits get `⏳ In progress:` with the expected outcome
+5. **Three statuses** — `done` (✅), `in_progress` (⏳), `blocked` (🚫). WIP work surfaces the *expected* outcome, not the work-so-far.
 6. **Use numbers** — "reduced latency by ~40%" beats "improved performance"
+
+Full rules in [`skill/references/translation-rules.md`](skill/references/translation-rules.md).
 
 ---
 
-## Performance reviews
+## Performance review prep
 
 Use the standup daily for a few weeks. History builds up in `history.db`. Then:
 
 ```
-generate a performance review for last 90 days    ← Claude Code
-git-impact review --last 90                       ← CLI
-git-impact review --quarter Q2-2026               ← CLI, specific quarter
+generate performance review prep for the last 90 days    ← Claude Code
+generate review for Q2-2026                              ← any supported editor
 ```
 
-Output:
+Output (think of this as evidence pack you paste into your own writing — not a finished review):
 
 ```
-Performance Review — Q2 2026
+Performance Review Prep — Q2 2026
 
 Led the security layer redesign that enabled SOC2 compliance sign-off.
 
 🚀 Security
-   • Shipped multi-tenant data isolation, unblocking a $2M enterprise deal
-   • Resolved 2 auth vulnerabilities before the audit window
+   • Shipped multi-tenant data isolation, unblocking a $2M enterprise deal      [Apr 8, PR #98]
+   • Resolved 2 auth vulnerabilities before the audit window                    [May 2, PR #114]
 
 ✅ Features
-   • Delivered admin portal ahead of schedule (was blocking 3 engineers)
+   • Delivered admin portal ahead of schedule (was blocking 3 engineers)        [Apr 22, PR #103]
 
 🔧 Reliability
-   • Reduced login latency by ~40% through auth flow refactor
+   • Reduced login latency by ~40% through auth flow refactor                   [May 8, inferred]
 
 📊 47 commits across 58 working days
 ```
@@ -219,7 +240,7 @@ All commands accept `-p <path>` to point at a different repo. By default the rep
 
 ## MCP server
 
-The MCP server exposes git data as tools so Claude Code can call them directly. No API key — Claude does the translation in its own session.
+The MCP server exposes git data as typed tools so AI editors can call them directly. No API key — your editor does the translation in its own session.
 
 Add to `.claude/settings.json` in your project:
 
@@ -234,14 +255,23 @@ Add to `.claude/settings.json` in your project:
 }
 ```
 
-Available tools: `get_git_activity`, `get_github_activity`, `save_impact_entry`, `get_history`, `update_context`.
+Available tools:
+
+| Tool | What it does |
+|---|---|
+| `get_git_activity` | Reads commits + file changes, applies privacy redaction |
+| `get_github_activity` | Pulls PR titles + descriptions (needs `github_token` in context) |
+| `get_last_standup_date` | Powers the "since last standup" default |
+| `save_impact_entry` | Persists a translation with provenance + refs |
+| `get_history` | Returns saved entries for a date range |
+| `update_context` | Updates `context.json` (company / glossary / privacy / token) |
 
 ---
 
 ## Local development
 
 ```bash
-git clone https://github.com/efraimnafady/git-impact
+git clone https://github.com/efraimnabil/git-impact
 cd git-impact
 npm install
 npm run build
@@ -254,6 +284,10 @@ node dist/cli/index.js view
 
 # Run the MCP server
 node dist/mcp/server.js
+
+# Tests
+npm test                  # one-shot
+npm run test:watch        # watch mode
 ```
 
 Publishing a new version:
@@ -271,37 +305,53 @@ git push --follow-tags
 ```
 src/
 ├── init/
-│   ├── installer.ts    # install() + runInitWizard() — the spec-kit style init
-│   └── templates.ts    # all integration file content as embedded TS strings
+│   ├── installer.ts        # install() + runInitWizard() + detectEditors()
+│   ├── installer.test.ts
+│   └── templates.ts        # editor-specific instruction templates
 ├── readers/
-│   ├── git.ts          # reads git log, diffs, file changes
-│   └── github.ts       # reads PRs via GitHub API (optional)
+│   ├── git.ts              # reads git log, diffs, file changes
+│   ├── github.ts           # reads PRs via GitHub API (optional)
+│   ├── redact.ts           # privacy filter (filenames + secret-shaped values)
+│   └── redact.test.ts
 ├── storage/
-│   └── db.ts           # per-repo SQLite history + context.json
+│   ├── db.ts               # per-repo SQLite history + context.json
+│   └── db.test.ts
 ├── report/
-│   ├── render.ts       # builds the HTML standup report
-│   └── html.ts         # HTML template helpers
+│   ├── render.ts           # builds the rolling HTML dashboard
+│   └── html.ts             # HTML template + provenance chips
 ├── mcp/
-│   ├── server.ts       # MCP server entry point
-│   ├── tools.ts        # data tools (get_git_activity, etc.)
-│   ├── resources.ts    # MCP resources (context, history overview)
-│   ├── prompts.ts      # computed prompt templates (standup, review)
-│   └── repo.ts         # auto-detects repo root from cwd
+│   ├── server.ts           # MCP server entry point
+│   ├── tools.ts            # typed data tools (get_git_activity, save_impact_entry, …)
+│   ├── resources.ts        # MCP resources (context, history overview)
+│   ├── prompts.ts          # computed prompt templates (standup, review)
+│   └── repo.ts             # auto-detects repo root from cwd
 └── cli/
-    └── index.ts        # init + view commands
+    └── index.ts            # init + view commands
 skill/
-└── SKILL.md            # standalone Claude Code skill (copy to any repo)
+├── SKILL.md                # workflow (200 lines, orchestrates MCP tools)
+└── references/
+    ├── translation-rules.md
+    └── html-template.md
 ```
 
 ---
 
 ## Roadmap
 
-- [x] `npm publish` — `npx git-impact init` works zero-install
-- [ ] Color output (`chalk`) in CLI mode
-- [ ] `--copy` flag to put output on clipboard
-- [ ] GitHub PR enrichment fully wired into standup output
-- [ ] Web dashboard for shared performance review links
+Shipped:
+- [x] Skill + MCP architecture (skill orchestrates, tools provide)
+- [x] Per-bullet provenance tags + refs
+- [x] Privacy redaction (default-on)
+- [x] "Since last standup" default
+- [x] Editor auto-detection in init
+- [x] Test baseline (Vitest, 40 tests)
+- [x] Multi-editor: Claude Code, Copilot, Cursor, Gemini CLI
+
+Next:
+- [ ] **PR description writer** — `git-impact-pr` skill produces ready-to-paste PR bodies
+- [ ] **Multi-repo standup** — aggregate across `~/work/*` in one update
+- [ ] **Changelog mode** — `since v1.2.0` produces user-facing release notes
+- [ ] **Team / cloud features** — shared history, shareable evidence-pack URLs
 
 ---
 
