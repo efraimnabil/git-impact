@@ -42,6 +42,11 @@ exports.startOfDaysAgo = startOfDaysAgo;
 const simple_git_1 = __importDefault(require("simple-git"));
 const path = __importStar(require("path"));
 const redact_1 = require("./redact");
+const DEFAULTS = {
+    maxCommits: 200,
+    includeDiff: false,
+    maxFilesPerCommit: 50,
+};
 function stripCredentials(url) {
     try {
         const parsed = new URL(url);
@@ -53,7 +58,8 @@ function stripCredentials(url) {
         return url.replace(/\/\/[^@]+@/, "//");
     }
 }
-async function readGitActivity(repoPath, since, until = new Date(), redactCfg = { enabled: true }) {
+async function readGitActivity(repoPath, since, until = new Date(), redactCfg = { enabled: true }, options = {}) {
+    const opts = { ...DEFAULTS, ...options };
     const git = (0, simple_git_1.default)(repoPath);
     const sinceStr = since.toISOString();
     const untilStr = until.toISOString();
@@ -73,44 +79,67 @@ async function readGitActivity(repoPath, since, until = new Date(), redactCfg = 
         .slice(-2)
         .join("/") || path.basename(repoPath);
     const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-    const commits = await Promise.all(log.all.map(async (entry) => {
-        // Root commits don't have a parent; `<hash>^` blows up. Fall back to
-        // `git show --stat` which works for both root and non-root commits.
-        const diff = await git
-            .diff([`${entry.hash}^`, entry.hash, "--stat"])
-            .catch(() => git.show(["--stat", "--format=", entry.hash]));
+    // Cap commit count. Older commits drop off — newest-first is what users care about.
+    const commitsTotal = log.all.length;
+    const entries = log.all.slice(0, opts.maxCommits);
+    const commitsTruncated = commitsTotal > entries.length;
+    const commits = await Promise.all(entries.map(async (entry) => {
+        // Files changed — always fetched (it's the primary structural signal).
+        // But cap per-commit so a 6,898-file commit doesn't dominate the response.
         const showOutput = await git.show([
             "--stat",
             "--name-only",
             "--format=",
             entry.hash,
         ]);
-        const filesChanged = showOutput
+        const allFiles = showOutput
             .split("\n")
             .map((l) => l.trim())
             .filter((l) => l && !l.includes("|") && !l.startsWith("=>") && !l.match(/^\d+ file/))
             .map((f) => (0, redact_1.redactFilename)(f, redactCfg));
-        return {
+        const filesChangedTruncated = allFiles.length > opts.maxFilesPerCommit;
+        const filesChanged = filesChangedTruncated
+            ? allFiles.slice(0, opts.maxFilesPerCommit)
+            : allFiles;
+        // Diff is opt-in — large diffs were the main culprit blowing past the
+        // MCP token budget on big weeks. Most translations don't need them;
+        // commit body + file list usually carries the signal.
+        let diff;
+        if (opts.includeDiff) {
+            const raw = await git
+                .diff([`${entry.hash}^`, entry.hash, "--stat"])
+                .catch(() => git.show(["--stat", "--format=", entry.hash]));
+            diff = (0, redact_1.redactText)(raw, redactCfg);
+        }
+        const commitInfo = {
             hash: entry.hash.slice(0, 8),
             date: entry.date,
             message: (0, redact_1.redactText)(entry.message, redactCfg),
             author: entry.author_name,
             body: (0, redact_1.redactText)(entry.body || "", redactCfg),
-            diff: (0, redact_1.redactText)(diff, redactCfg),
             filesChanged,
         };
+        if (diff)
+            commitInfo.diff = diff;
+        if (filesChangedTruncated) {
+            commitInfo.filesChangedTruncated = true;
+            commitInfo.filesChangedCount = allFiles.length;
+        }
+        return commitInfo;
     }));
-    const allFiles = new Set(commits.flatMap((c) => c.filesChanged));
-    return {
+    const totalFilesChanged = new Set(commits.flatMap((c) => c.filesChanged)).size;
+    const summary = {
         commits,
-        totalFilesChanged: allFiles.size,
+        totalFilesChanged,
         repoName,
         branch: branch.trim(),
-        dateRange: {
-            from: sinceStr,
-            to: untilStr,
-        },
+        dateRange: { from: sinceStr, to: untilStr },
     };
+    if (commitsTruncated) {
+        summary.commitsTruncated = true;
+        summary.commitsTotal = commitsTotal;
+    }
+    return summary;
 }
 function startOfDay(date = new Date()) {
     const d = new Date(date);

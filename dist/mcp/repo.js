@@ -77,12 +77,18 @@ function resolveRepoPath(explicitPath) {
         stickyRepo = fromCwd;
         return { path: fromCwd, source: "cwd" };
     }
-    // 4. Nothing found
+    // 4. Nothing found.
+    //
+    // Most common cause: the skill called an MCP tool without passing `repo_path`.
+    // The MCP server lives outside the user's project (often the npx cache), so
+    // cwd-based detection rarely works. The fix is always at the skill layer:
+    // pass repo_path explicitly, sourced from the editor's working directory.
     throw new Error("No git repository found.\n\n" +
-        "The MCP server's cwd is not inside a git repo, and no path was given.\n" +
-        "Tell me the absolute path:\n" +
-        '  "do my standup for ~/code/my-project"\n\n' +
-        "Once resolved, the path is cached for the rest of this MCP session.");
+        "MCP server cwd: " + process.cwd() + " (not a git repo).\n\n" +
+        "Pass `repo_path` explicitly — the absolute path of the user's open " +
+        "project. Most Claude Code skills can find this via $PWD or a Bash " +
+        "`pwd` call before invoking MCP tools. Once you've called one tool with " +
+        "an explicit path, the server caches it for the rest of the session.");
 }
 /** Walk up directory tree until a .git folder is found, or return null */
 function findGitRoot(dir) {

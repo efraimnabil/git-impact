@@ -61,6 +61,20 @@ If the message is ambiguous, default to **standup**.
 
 ## Mode: standup
 
+### 0. Resolve the repo path FIRST (before any MCP call)
+
+The MCP server's cwd is not your editor's cwd — it usually lives inside
+the npx cache. Every tool call needs an explicit `repo_path`. Get it once
+at the top of the standup:
+
+```bash
+pwd   # returns the absolute path of the open project in Claude Code
+```
+
+Save that as `REPO_PATH` and pass it as `repo_path` to every MCP tool call
+in this standup. If the user's message names a specific project ("for
+~/code/foo"), use that instead.
+
 ### 1. Resolve the lookback window
 
 - If the user said an explicit "since X", convert to an ISO timestamp and use it.

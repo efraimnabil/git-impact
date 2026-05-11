@@ -20,17 +20,26 @@ export const TOOL_DEFINITIONS: Tool[] = [
   {
     name: "get_git_activity",
     description:
-      "Read raw git commits and file changes from the current repository. " +
-      "Automatically detects the open project — no path needed. " +
-      "Returns structured commit data: messages, bodies, changed file paths, and diff stats. " +
-      "Always call this first before generating a standup or impact summary.",
+      "Read git commits + file changes from the user's project. ALWAYS pass " +
+      "`repo_path` — the MCP server runs from npx cache, not your editor's cwd, " +
+      "so it can't guess. Use the absolute path of the project the user is " +
+      "currently working in. " +
+      "Returns: commits[] (hash, date, message, body, author, filesChanged), plus " +
+      "repoName, branch, dateRange, _repo_root (CAPTURE THIS — reuse it as " +
+      "repo_path for every later tool call). " +
+      "Diffs are NOT included by default to keep responses small — set " +
+      "include_diff:true only when commit messages are too sparse to translate. " +
+      "Lists are capped (200 commits, 50 files per commit) with truncation flags.",
     inputSchema: {
       type: "object" as const,
+      required: ["repo_path"],
       properties: {
         repo_path: {
           type: "string",
           description:
-            "Override the repo path. Omit to auto-detect from the open project.",
+            "Absolute path of the user's open project (e.g. /Users/you/code/my-app). " +
+            "REQUIRED. The MCP server cannot infer this — pass it from the " +
+            "editor's working directory.",
         },
         since_iso: {
           type: "string",
@@ -39,6 +48,23 @@ export const TOOL_DEFINITIONS: Tool[] = [
         until_iso: {
           type: "string",
           description: "ISO 8601 end time. Defaults to now.",
+        },
+        max_commits: {
+          type: "number",
+          description: "Cap commits returned (newest first). Default 200.",
+        },
+        max_files_per_commit: {
+          type: "number",
+          description:
+            "Cap files-changed list per commit. Default 50 — set higher only " +
+            "when a commit's full file list is genuinely needed.",
+        },
+        include_diff: {
+          type: "boolean",
+          description:
+            "Include `git diff --stat` text per commit. Default false. " +
+            "Setting this true can multiply response size 10x+ for big weeks — " +
+            "only enable when commit messages are too sparse to translate.",
         },
       },
     },
@@ -219,9 +245,21 @@ async function handleGetGitActivity(args: Record<string, unknown>): Promise<Tool
     valuePatterns: ctx?.privacy?.valuePatterns,
   };
 
+  const readOptions = {
+    maxCommits: args.max_commits as number | undefined,
+    maxFilesPerCommit: args.max_files_per_commit as number | undefined,
+    includeDiff: (args.include_diff as boolean) ?? false,
+  };
+
   try {
-    const git = await readGitActivity(repo.path, since, until, redactCfg);
-    return ok(JSON.stringify({ ...git, _repo_root: repo.path, _redacted: redactCfg.enabled }, null, 2));
+    const git = await readGitActivity(repo.path, since, until, redactCfg, readOptions);
+    return ok(
+      JSON.stringify(
+        { ...git, _repo_root: repo.path, _redacted: redactCfg.enabled },
+        null,
+        2
+      )
+    );
   } catch (err) {
     return error(`Could not read git history: ${(err as Error).message}`);
   }
