@@ -10,8 +10,9 @@ description: >
   review", "performance review prep", "review my commits", "what's blocked",
   "weekly summary". Trigger on any request to turn raw git output into
   something a non-technical manager can read. The skill orchestrates MCP
-  tools (get_git_activity, get_last_standup_date, save_impact_entry, render_dashboard, get_history, update_context) — it does
-  not run sqlite3 or other DB commands directly.
+  tools (get_git_activity, get_last_standup_date, save_impact_entry,
+  render_dashboard, get_history, update_context) — it does not run sqlite3
+  or other DB commands directly.
 ---
 
 # git-impact
@@ -23,217 +24,31 @@ rules, and produce the output. The MCP server owns all data access (git, DB).
 You own the language.
 
 If the `git-impact` MCP server is not available in this conversation, tell
-the user: *"The git-impact MCP server isn't connected. Add it to
-`.claude/settings.json` (`mcpServers.git-impact.command = "npx"`,
-`args = ["git-impact-mcp"]`) and restart Claude Code."* Don't try to
-emulate the workflow with raw bash — the SQLite schema is non-trivial
-and you'll diverge from the canonical writer.
-
-**Pass `repo_path` explicitly to every tool call after the first.** The
-first `get_git_activity` call returns `_repo_root` in its response. Save
-that value and pass it as `repo_path` to every subsequent call
-(`save_impact_entry`, `render_dashboard`, etc.). The MCP server caches
-the resolved path within a session, but explicit passing is more reliable
-when the server's cwd shifts.
-
----
+the user: *"The git-impact MCP server isn't connected. Add it to your
+editor's MCP config (`command = "npx"`, `args = ["git-impact-mcp"]`) and
+restart."* Don't try to emulate the workflow with raw bash — the SQLite
+schema is non-trivial and you'll diverge from the canonical writer.
 
 ## Pick a mode from the user's message
 
-| User says | Mode |
-|---|---|
-| "do my standup", "today", "/git-impact", no args | **standup** (default) |
-| "since yesterday", "since 3d", "since 2026-05-01" | **standup** with explicit `since_iso` |
-| "review", "performance review", "last 90 days", "Q2 review" | **review** |
-| "init", "set up context", "configure for this repo" | **init** |
-| "make a presentation", "make a slide", "make me a shareable" | **standup** + **bespoke HTML** (extra step) |
+| User says | Mode | Read |
+|---|---|---|
+| "do my standup", "today", "/git-impact", no args | **standup** (default) | `references/mode-standup.md` |
+| "since yesterday", "since 3d", "since 2026-05-01" | **standup** + explicit `since_iso` | `references/mode-standup.md` |
+| "review", "performance review", "last 90 days", "Q2 review" | **review** | `references/mode-review.md` |
+| "init", "set up context", "configure for this repo" | **init** | `references/mode-init.md` |
+| "make a presentation", "make a slide", "make me a shareable" | **standup** + bespoke HTML | `references/mode-standup.md` + `references/html-template.md` |
+
+If the message is ambiguous, default to **standup**. Load only the
+reference file(s) for the chosen mode — don't read all of them.
 
 The default standup writes to the rolling HTML dashboard at
-`.git-impact/result.html` (regenerated in step 7 via the
-`render_dashboard` MCP tool — *not* by asking the user to run a CLI).
-The per-day bespoke HTML is only created when the user explicitly asks
-for a presentation — don't write one by default; it's expensive and
-most days don't need it.
+`.git-impact/result.html` (regenerated via the `render_dashboard` MCP tool
+— *not* by asking the user to run a CLI). The per-day bespoke HTML is only
+created when the user explicitly asks for a presentation — don't write one
+by default; it's expensive and most days don't need it.
 
-If the message is ambiguous, default to **standup**.
-
----
-
-## Mode: standup
-
-### 0. Resolve the repo path FIRST (before any MCP call)
-
-The MCP server's cwd is not your editor's cwd — it usually lives inside
-the npx cache. Every tool call needs an explicit `repo_path`. Get it once
-at the top of the standup:
-
-```bash
-pwd   # returns the absolute path of the open project in Claude Code
-```
-
-Save that as `REPO_PATH` and pass it as `repo_path` to every MCP tool call
-in this standup. If the user's message names a specific project ("for
-~/code/foo"), use that instead.
-
-### 1. Resolve the lookback window
-
-- If the user said an explicit "since X", convert to an ISO timestamp and use it.
-- Otherwise call **`get_last_standup_date`**. If it returns a date, use the
-  start of the day after that date as `since_iso`. If it returns null,
-  default to start-of-today.
-
-This is the "since last standup" default — it survives weekends and days off.
-
-### 2. Fetch git activity
-
-Call **`get_git_activity`** with `since_iso` and (optionally) `until_iso`.
-You'll get back commits, file stats, branch, and `_repo_root` — the
-absolute path the MCP server resolved.
-
-> **CRITICAL: capture `_repo_root` from this response and pass it as
-> `repo_path` to every subsequent tool call** (`save_impact_entry`,
-> `render_dashboard`, `get_history`). The MCP server caches it after
-> the first successful call, but threading it explicitly is the safe
-> belt-and-suspenders move and removes any chance the second tool call
-> resolves to a different directory.
-
-If there are no commits in the window: tell the user clearly and stop. Do
-NOT save an empty entry.
-
-### 3. Optional: enrich with GitHub PR data
-
-If the user has a `github_token` saved in their context (the
-`get_git_activity` response or a prior `get_github_activity` call will tell
-you), call **`get_github_activity`** to pull PR titles and descriptions.
-PR descriptions are the single best source for accurate "why it matters"
-text — strongly prefer them over inference.
-
-### 4. Translate
-
-Read **`references/translation-rules.md`** for the prompt-engineering details.
-Key rules at a glance:
-
-- **What + why**, not what + how
-- **Apply the glossary** from `context.json` (returned by the context resource
-  or visible in `get_git_activity` output)
-- **Provenance is mandatory** — every saved bullet gets `pr` / `commit_body` /
-  `commit_message` / `ticket` / `inferred`
-- **Group related commits** into one bullet, not many
-- **2-5 bullets total**, never more
-
-### 5. Print the user-facing output
-
-```
-📅 [Day, Date or date range]
-
-✅ [Summary]
-   → [Why it matters]
-
-⏳ In progress: [What]
-   → [Expected outcome]
-
-🚫 Blocked: [What]   (only if applicable)
-   → [What's needed]
-
-📁 [N] files across [areas]
-   [N] commit(s) on [branch]
-```
-
-### 6. Save to history
-
-Call **`save_impact_entry`** with the structured items including
-`provenance` for each. The MCP tool handles the SQLite write — never run
-`sqlite3` directly. Required fields per item: `status`, `summary`,
-`provenance`. Recommended: `impact`, `refs`.
-
-Example item:
-```json
-{
-  "status": "done",
-  "summary": "Shipped multi-tenant data isolation",
-  "impact": "Unblocks SOC2 sign-off, prevents cross-company data leaks",
-  "provenance": "pr",
-  "refs": ["PR #142", "ENG-1234"]
-}
-```
-
-### 7. Regenerate the rolling dashboard, then print its URL
-
-Call **`render_dashboard`** with the same `repo_path`. It rewrites
-`.git-impact/result.html` so today's entry is included, and returns
-the `file://` URL.
-
-End your reply with that URL on its own last line so the user can
-⌘-click to open:
-
-```
-🎯 file:///<absolute-repo-path>/.git-impact/result.html
-```
-
-Don't try to open a browser yourself — printing the URL is enough.
-
-**Only if the user explicitly asked for a "presentation", "slide",
-"shareable", or "screenshot-friendly" output**, ALSO read
-`references/html-template.md` and use your `Write` tool to create
-`<repo>/.git-impact/standups/YYYY-MM-DD.html` (plus update
-`standups/index.html`). Most days don't need this — skip by default.
-
----
-
-## Mode: review
-
-1. Parse the period from the user's message:
-   - "last 30 days" / "30d" → `last_days: 30`
-   - "last 90 days" / "90d" / no arg → `last_days: 90`
-   - "Q2-2026" → `from_date: 2026-04-01`, `to_date: 2026-06-30`
-2. Call **`get_history`** with the parsed window.
-3. If no entries returned: tell the user
-   *"No saved history yet for this period. Use the standup mode daily to
-   build up history, then come back."* and stop.
-4. Synthesise themes (Features, Reliability, Security, Code review,
-   Infrastructure). Only include themes that apply.
-5. Frame as **performance review prep** (evidence pack), not a finished
-   review — bullets should include dates and refs the user can paste into
-   their own writing.
-
-Output:
-```
-Performance Review Prep — [Period]
-
-[One headline sentence — biggest contribution]
-
-🚀 [High-impact theme]
-   • Specific achievement [date, refs]
-
-✅ [Medium-impact theme]
-   • ...
-
-🔧 [Lower-impact theme]
-   • ...
-
-📊 [N] commits across [N] working days
-```
-
----
-
-## Mode: init
-
-Ask one at a time:
-
-1. *"What does your company/product do? (1–2 sentences)"*
-2. *"What does your manager care most about?"*
-3. *"Technical terms to translate? Format: RLS=data security, MFA=login security (blank to skip)"*
-
-Then call **`update_context`** with the answers. Tell the user:
-*"Saved to `.git-impact/context.json`. Commit this to share the glossary with your team."*
-
-If the install also wrote slash command files for other editors (Cursor,
-Copilot, Gemini), point that out so they know the same workflow works
-elsewhere.
-
----
-
-## Tone
+## Tone (applies to every mode)
 
 - Write for a non-technical manager. No jargon that isn't in the glossary.
 - Short sentences. No filler. Skip "this change" / "this commit" constructions.
@@ -243,5 +58,4 @@ elsewhere.
 - 2 accurate bullets beat 5 vague ones.
 
 For prompt details, anti-patterns, and the full output format, see
-`references/translation-rules.md`. For the bespoke daily HTML, see
-`references/html-template.md`.
+`references/translation-rules.md`.

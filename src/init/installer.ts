@@ -3,9 +3,6 @@ import * as path from "path";
 import * as readline from "readline";
 import {
   CLAUDE_MD_BLOCK,
-  COPILOT_INSTRUCTIONS,
-  CURSOR_RULES,
-  GEMINI_COMMAND,
   CONTEXT_TEMPLATE,
 } from "./templates";
 
@@ -20,6 +17,57 @@ function shippedSkillDir(): string {
   return path.resolve(__dirname, "..", "..", "skill");
 }
 
+// ─── Editor catalog ───────────────────────────────────────────────────────────
+
+/**
+ * Every editor we know how to install for, with the project-local directory
+ * it reads SKILL.md folders from (per each vendor's published Agent Skills
+ * docs as of 2026-05). Adding a new editor here is a one-line change.
+ *
+ * `agents` is the cross-vendor standard path (`.agents/skills/`) — most
+ * modern Agent Skills adopters read it, so it's always written as a
+ * baseline.
+ */
+export type Integration =
+  | "agents"
+  | "claude"
+  | "copilot"
+  | "cursor"
+  | "gemini"
+  | "opencode"
+  | "goose"
+  | "amp"
+  | "codex"
+  | "kiro"
+  | "roo"
+  | "factory";
+
+interface EditorSpec {
+  /** Project-local directory that the editor scans for `<name>/SKILL.md`. */
+  skillsRoot: string;
+  /** Directory that signals "this editor is configured for this repo". */
+  detectDir: string;
+}
+
+const EDITORS: Record<Integration, EditorSpec> = {
+  agents:   { skillsRoot: ".agents/skills",   detectDir: ".agents"   },
+  claude:   { skillsRoot: ".claude/skills",   detectDir: ".claude"   },
+  copilot:  { skillsRoot: ".github/skills",   detectDir: ".github"   },
+  cursor:   { skillsRoot: ".cursor/skills",   detectDir: ".cursor"   },
+  gemini:   { skillsRoot: ".gemini/skills",   detectDir: ".gemini"   },
+  opencode: { skillsRoot: ".opencode/skills", detectDir: ".opencode" },
+  goose:    { skillsRoot: ".goose/skills",    detectDir: ".goose"    },
+  amp:      { skillsRoot: ".amp/skills",      detectDir: ".amp"      },
+  codex:    { skillsRoot: ".codex/skills",    detectDir: ".codex"    },
+  kiro:     { skillsRoot: ".kiro/skills",     detectDir: ".kiro"     },
+  roo:      { skillsRoot: ".roo/skills",      detectDir: ".roo"      },
+  factory:  { skillsRoot: ".factory/skills",  detectDir: ".factory"  },
+};
+
+const ALL_INTEGRATIONS: Integration[] = Object.keys(EDITORS) as Integration[];
+
+const SKILL_NAME = "git-impact";
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface InstallOptions {
@@ -29,8 +77,6 @@ export interface InstallOptions {
   silent?: boolean;
 }
 
-export type Integration = "claude" | "copilot" | "cursor" | "gemini";
-
 export interface RepoContext {
   companyDescription: string;
   managerPriorities: string;
@@ -39,17 +85,25 @@ export interface RepoContext {
 
 export interface InstalledFile {
   path: string;
-  action: "created" | "updated" | "skipped";
+  action: "created" | "updated" | "skipped" | "removed";
 }
 
 /**
  * Core install function — idempotent, safe to run multiple times.
- * Creates all integration files, context.json, updates CLAUDE.md and .gitignore.
- * Returns a manifest of every file it touched.
+ *
+ * Behaviour:
+ *  1. Migrate away from pre-0.7 layout (deletes editor-specific instruction
+ *     files that have been superseded by the canonical SKILL.md folder).
+ *  2. Always write `.agents/skills/git-impact/` (cross-vendor standard).
+ *  3. Mirror the same SKILL.md folder into each requested editor's path.
+ *  4. Touch context.json, .gitignore, CLAUDE.md, manifest.json.
  */
 export function install(opts: InstallOptions): InstalledFile[] {
   const { repoRoot, integrations, context } = opts;
   const installed: InstalledFile[] = [];
+
+  // 0. Migrate any legacy per-editor instruction files from the old installer.
+  installed.push(...migrateLegacyLayout(repoRoot));
 
   // 1. Create .git-impact/ directory and context.json
   const gitImpactDir = path.join(repoRoot, ".git-impact");
@@ -67,22 +121,25 @@ export function install(opts: InstallOptions): InstalledFile[] {
   // 2. Update .gitignore
   installed.push(ensureGitignore(repoRoot));
 
-  // 3. Per-integration files
-  for (const integration of integrations) {
-    installed.push(...installIntegration(repoRoot, integration));
+  // 3. Install the SKILL.md folder once per requested editor. `agents` is
+  //    always included as a cross-vendor baseline.
+  const targets = dedupe(["agents", ...integrations] as Integration[]);
+  for (const integration of targets) {
+    installed.push(...installSkillFolder(repoRoot, integration));
   }
 
-  // 4. Update CLAUDE.md if Claude integration selected
-  if (integrations.includes("claude")) {
-    installed.push(updateClaudeMd(repoRoot));
-  }
+  // 4. Always write CLAUDE.md — it's the most-used editor's discovery
+  //    surface, and the block is harmless for non-Claude users.
+  installed.push(updateClaudeMd(repoRoot));
 
   // 5. Write manifest
   const manifest = {
-    version: "0.1.0",
+    version: "0.7.0",
     installedAt: new Date().toISOString(),
-    integrations,
-    files: installed.map((f) => path.relative(repoRoot, f.path)),
+    integrations: targets,
+    files: installed
+      .filter((f) => f.action !== "removed")
+      .map((f) => path.relative(repoRoot, f.path)),
   };
   const manifestPath = path.join(gitImpactDir, "manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
@@ -90,63 +147,70 @@ export function install(opts: InstallOptions): InstalledFile[] {
   return installed;
 }
 
-// ─── Per-integration installers ───────────────────────────────────────────────
+// ─── Skill folder install ─────────────────────────────────────────────────────
 
-function installIntegration(repoRoot: string, integration: Integration): InstalledFile[] {
-  switch (integration) {
-    case "claude":
-      return installClaude(repoRoot);
-    case "copilot":
-      return installCopilot(repoRoot);
-    case "cursor":
-      return installCursor(repoRoot);
-    case "gemini":
-      return installGemini(repoRoot);
-  }
-}
-
-function installClaude(repoRoot: string): InstalledFile[] {
-  const skillDir = path.join(repoRoot, ".claude", "skills", "git-impact");
-  fs.mkdirSync(skillDir, { recursive: true });
-  fs.mkdirSync(path.join(skillDir, "references"), { recursive: true });
+function installSkillFolder(repoRoot: string, integration: Integration): InstalledFile[] {
+  const spec = EDITORS[integration];
+  const destDir = path.join(repoRoot, spec.skillsRoot, SKILL_NAME);
+  fs.mkdirSync(destDir, { recursive: true });
 
   const src = shippedSkillDir();
-  const installed: InstalledFile[] = [];
+  return copyTree(src, destDir);
+}
 
-  // Copy SKILL.md and any reference files from the shipped skill directory.
-  installed.push(
-    copyFile(path.join(src, "SKILL.md"), path.join(skillDir, "SKILL.md"))
-  );
-  const refsSrc = path.join(src, "references");
-  if (fs.existsSync(refsSrc)) {
-    for (const file of fs.readdirSync(refsSrc)) {
-      installed.push(
-        copyFile(
-          path.join(refsSrc, file),
-          path.join(skillDir, "references", file)
-        )
-      );
+/** Recursively mirror `src` → `dest`. Returns one InstalledFile per file copied. */
+function copyTree(src: string, dest: string): InstalledFile[] {
+  const out: InstalledFile[] = [];
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...copyTree(srcPath, destPath));
+    } else if (entry.isFile()) {
+      out.push(copyFile(srcPath, destPath));
     }
   }
-  return installed;
+  return out;
 }
 
-function installCopilot(repoRoot: string): InstalledFile[] {
-  const dir = path.join(repoRoot, ".github", "instructions");
-  fs.mkdirSync(dir, { recursive: true });
-  return [writeFile(path.join(dir, "git-impact.instructions.md"), COPILOT_INSTRUCTIONS)];
+// ─── Legacy migration ─────────────────────────────────────────────────────────
+
+/**
+ * Files written by the pre-0.7 installer that are now superseded by the
+ * canonical SKILL.md folder. Deleted on next `init`. Parent dirs are NOT
+ * removed unless they were a git-impact-only location.
+ */
+const LEGACY_FILES = [
+  ".github/instructions/git-impact.instructions.md",
+  ".cursor/rules/git-impact.mdc",
+  ".gemini/commands/git-impact.md",
+];
+
+function migrateLegacyLayout(repoRoot: string): InstalledFile[] {
+  const removed: InstalledFile[] = [];
+  for (const rel of LEGACY_FILES) {
+    const abs = path.join(repoRoot, rel);
+    if (fs.existsSync(abs)) {
+      fs.unlinkSync(abs);
+      removed.push({ path: abs, action: "removed" });
+      // If the parent dir is now empty and was created solely for git-impact,
+      // clean it up too. Only touch dirs ending in `instructions`, `rules`,
+      // or `commands` — those are the pre-0.7 install locations.
+      tryRemoveEmptyDir(path.dirname(abs), ["instructions", "rules", "commands"]);
+    }
+  }
+  return removed;
 }
 
-function installCursor(repoRoot: string): InstalledFile[] {
-  const dir = path.join(repoRoot, ".cursor", "rules");
-  fs.mkdirSync(dir, { recursive: true });
-  return [writeFile(path.join(dir, "git-impact.mdc"), CURSOR_RULES)];
-}
-
-function installGemini(repoRoot: string): InstalledFile[] {
-  const dir = path.join(repoRoot, ".gemini", "commands");
-  fs.mkdirSync(dir, { recursive: true });
-  return [writeFile(path.join(dir, "git-impact.md"), GEMINI_COMMAND)];
+function tryRemoveEmptyDir(dir: string, allowedBasenames: string[]): void {
+  if (!allowedBasenames.includes(path.basename(dir))) return;
+  try {
+    const entries = fs.readdirSync(dir);
+    if (entries.length === 0) fs.rmdirSync(dir);
+  } catch {
+    // Dir gone or not readable — nothing to do.
+  }
 }
 
 // ─── CLAUDE.md managed block ──────────────────────────────────────────────────
@@ -168,13 +232,11 @@ function updateClaudeMd(repoRoot: string): InstalledFile {
   const endIdx = existing.indexOf(BLOCK_END);
 
   if (startIdx !== -1 && endIdx !== -1) {
-    // Replace existing block
     const updated = existing.slice(0, startIdx) + block + existing.slice(endIdx + BLOCK_END.length);
     fs.writeFileSync(claudeMdPath, updated);
     return { path: claudeMdPath, action: "updated" };
   }
 
-  // Append block
   fs.writeFileSync(claudeMdPath, existing.trimEnd() + "\n\n" + block + "\n");
   return { path: claudeMdPath, action: "updated" };
 }
@@ -204,19 +266,19 @@ function ensureGitignore(repoRoot: string): InstalledFile {
 
 /**
  * Look for editor-specific directories in the repo. Returns whichever editors
- * already have config there, in stable order. Lets `init` skip the "which AI
+ * already have config there, in catalog order. Lets `init` skip the "which AI
  * tools do you use?" question when the answer is obvious from the filesystem.
+ *
+ * Note: `agents` (the cross-vendor `.agents/skills/` baseline) is always
+ * written by `install()` regardless of detection, so it's excluded from this
+ * return value.
  */
 export function detectEditors(repoRoot: string): Integration[] {
-  const checks: Array<{ editor: Integration; relPath: string }> = [
-    { editor: "claude",  relPath: ".claude" },
-    { editor: "copilot", relPath: ".github" },
-    { editor: "cursor",  relPath: ".cursor" },
-    { editor: "gemini",  relPath: ".gemini" },
-  ];
-  return checks
-    .filter(({ relPath }) => fs.existsSync(path.join(repoRoot, relPath)))
-    .map(({ editor }) => editor);
+  return ALL_INTEGRATIONS.filter((id) => {
+    if (id === "agents") return false;
+    const dir = EDITORS[id].detectDir;
+    return fs.existsSync(path.join(repoRoot, dir));
+  });
 }
 
 // ─── Interactive prompt ───────────────────────────────────────────────────────
@@ -262,6 +324,7 @@ export async function runInitWizard(repoRoot: string): Promise<{
   );
 
   const detected = detectEditors(repoRoot);
+  const editorOptions = ALL_INTEGRATIONS.filter((i) => i !== "agents");
   const detectedLabel =
     detected.length > 0
       ? detected.join(", ")
@@ -269,7 +332,8 @@ export async function runInitWizard(repoRoot: string): Promise<{
 
   const integrationsInput = await ask(
     `\n  Which AI editors should I install for? (comma-separated, or "all")\n` +
-    `  Options: claude, copilot, cursor, gemini\n` +
+    `  Options: ${editorOptions.join(", ")}\n` +
+    `  (.agents/skills/ is always written — works with most modern editors)\n` +
     `  Detected in this repo: ${detectedLabel}\n` +
     `  [press Enter to use detected]\n` +
     `  > `
@@ -287,19 +351,17 @@ export async function runInitWizard(repoRoot: string): Promise<{
   }
 
   // Parse integrations
-  const ALL_INTEGRATIONS: Integration[] = ["claude", "copilot", "cursor", "gemini"];
   let integrations: Integration[];
   const raw = integrationsInput.toLowerCase().trim();
   if (!raw) {
-    // Empty input → use what we detected, or claude as the safe default.
     integrations = detected.length > 0 ? detected : ["claude"];
   } else if (raw === "all") {
-    integrations = ALL_INTEGRATIONS;
+    integrations = editorOptions;
   } else {
     integrations = raw
       .split(",")
       .map((s) => s.trim() as Integration)
-      .filter((s) => ALL_INTEGRATIONS.includes(s));
+      .filter((s) => ALL_INTEGRATIONS.includes(s) && s !== "agents");
     if (integrations.length === 0) integrations = detected.length > 0 ? detected : ["claude"];
   }
 
@@ -323,8 +385,13 @@ function writeFile(filePath: string, content: string): InstalledFile {
 
 function copyFile(srcPath: string, destPath: string): InstalledFile {
   const existed = fs.existsSync(destPath);
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
   fs.copyFileSync(srcPath, destPath);
   return { path: destPath, action: existed ? "updated" : "created" };
+}
+
+function dedupe<T>(xs: T[]): T[] {
+  return Array.from(new Set(xs));
 }
 
 function loadExistingContext(repoRoot: string): RepoContext | null {

@@ -52,7 +52,8 @@ The wizard auto-detects which AI editors you already use and installs for them. 
   >
 
   Which AI editors should I install for? (comma-separated, or "all")
-  Options: claude, copilot, cursor, gemini
+  Options: claude, copilot, cursor, gemini, opencode, goose, amp, codex, kiro, roo, factory
+  (.agents/skills/ is always written — works with most modern editors)
   Detected in this repo: claude, cursor
   [press Enter to use detected]
   >
@@ -66,10 +67,12 @@ Then it creates everything and tells you what it did:
 
   ✅  .git-impact/context.json
   ✅  .gitignore
+  ✅  .agents/skills/git-impact/SKILL.md          ← cross-vendor baseline
+  ✅  .agents/skills/git-impact/references/...
   ✅  .claude/skills/git-impact/SKILL.md
-  ✅  .claude/skills/git-impact/references/translation-rules.md
-  ✅  .claude/skills/git-impact/references/html-template.md
-  ✅  .cursor/rules/git-impact.mdc
+  ✅  .claude/skills/git-impact/references/...
+  ✅  .cursor/skills/git-impact/SKILL.md
+  ✅  .cursor/skills/git-impact/references/...
   ✅  CLAUDE.md
   ✅  .git-impact/manifest.json
 
@@ -94,13 +97,13 @@ Once installed, just talk to your AI editor naturally:
 | `make a presentation for today` | Adds a bespoke shareable HTML page (opt-in) |
 | `set up context for this repo` | Re-runs the init questions inline |
 
-Works in **Claude Code**, **GitHub Copilot**, **Cursor**, and **Gemini CLI**. Claude Code and Gemini CLI get the full agentic experience (the skill auto-runs the MCP tools); Cursor and Copilot get the same instructions as paste-into-chat fallbacks.
+Works in any editor that supports the [Agent Skills](https://agentskills.io) format — including **Claude Code**, **Cursor**, **GitHub Copilot** (+ VS Code), **Gemini CLI**, **OpenCode**, **Goose**, **Amp**, **OpenAI Codex**, **Kiro**, **Roo Code**, **Factory**, and any future adopter that reads `.agents/skills/`. One canonical `SKILL.md` folder, mirrored to whichever editor-specific directories each vendor expects.
 
 ---
 
 ## How it works
 
-git-impact ships two things: a Claude Code **skill** that handles the prompting, and an **MCP server** that exposes typed data tools (git activity, history, context). The skill calls the MCP tools — no `sqlite3` shelling, no hand-rolled SQL.
+git-impact ships two things: an [Agent Skills](https://agentskills.io)–compatible **skill** that handles the prompting (works in every adopter — Claude Code, Cursor, Copilot, Gemini CLI, OpenCode, Goose, Amp, Codex, Kiro, Roo, Factory, …), and an **MCP server** that exposes typed data tools (git activity, history, context). The skill calls the MCP tools — no `sqlite3` shelling, no hand-rolled SQL.
 
 ```
 your commits  →  MCP get_git_activity  →  privacy redaction  →  AI translation
@@ -123,21 +126,20 @@ History is saved locally to `.git-impact/history.db` (SQLite, gitignored) so rev
 
 ```
 your-project/
-├── .claude/
-│   └── skills/git-impact/
-│       ├── SKILL.md                            # Workflow (orchestrates MCP tools)
-│       └── references/
-│           ├── translation-rules.md            # Loaded on demand
-│           └── html-template.md                # Loaded on demand
-├── .github/
-│   └── instructions/
-│       └── git-impact.instructions.md          # GitHub Copilot
-├── .cursor/
-│   └── rules/
-│       └── git-impact.mdc                      # Cursor
-├── .gemini/
-│   └── commands/
-│       └── git-impact.md                       # Gemini CLI
+├── .agents/
+│   └── skills/git-impact/                      # Cross-vendor Agent Skills baseline
+│       ├── SKILL.md                            # Workflow router (orchestrates MCP tools)
+│       └── references/                         # Loaded on demand (progressive disclosure)
+│           ├── mode-standup.md
+│           ├── mode-review.md
+│           ├── mode-init.md
+│           ├── translation-rules.md
+│           └── html-template.md
+├── .claude/skills/git-impact/                  # Same skill folder, mirrored for Claude Code
+├── .cursor/skills/git-impact/                  # …mirrored for Cursor
+├── .github/skills/git-impact/                  # …mirrored for GitHub Copilot + VS Code
+├── .gemini/skills/git-impact/                  # …mirrored for Gemini CLI
+├── (other detected editors: .opencode/, .codex/, .kiro/, .roo/, .factory/, …)
 ├── .git-impact/
 │   ├── context.json                            # Team glossary  ← commit this
 │   ├── manifest.json                           # Install record ← commit this
@@ -308,7 +310,7 @@ src/
 ├── init/
 │   ├── installer.ts        # install() + runInitWizard() + detectEditors()
 │   ├── installer.test.ts
-│   └── templates.ts        # editor-specific instruction templates
+│   └── templates.ts        # CLAUDE.md block + context.json template
 ├── readers/
 │   ├── git.ts              # reads git log, diffs, file changes
 │   ├── github.ts           # reads PRs via GitHub API (optional)
@@ -329,8 +331,11 @@ src/
 └── cli/
     └── index.ts            # init + view commands
 skill/
-├── SKILL.md                # workflow (200 lines, orchestrates MCP tools)
-└── references/
+├── SKILL.md                # ~60-line router (picks a mode, points at references/)
+└── references/             # loaded on demand (Agent Skills progressive disclosure)
+    ├── mode-standup.md     # default mode — translate commits → bullets
+    ├── mode-review.md      # synthesise history → performance review prep
+    ├── mode-init.md        # interactive context.json setup
     ├── translation-rules.md
     └── html-template.md
 ```
@@ -347,6 +352,8 @@ Shipped:
 - [x] Editor auto-detection in init
 - [x] Test baseline (Vitest, 40 tests)
 - [x] Multi-editor: Claude Code, Copilot, Cursor, Gemini CLI
+- [x] Canonical SKILL.md format ([Agent Skills](https://agentskills.io)) — works in OpenCode, Goose, Amp, Codex, Kiro, Roo, Factory, and any future adopter
+- [x] Auto-migration from pre-0.7 per-editor instruction files
 
 Next:
 - [ ] **PR description writer** — `git-impact-pr` skill produces ready-to-paste PR bodies
