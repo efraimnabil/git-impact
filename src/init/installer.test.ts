@@ -36,17 +36,16 @@ describe("detectEditors", () => {
     expect(detectEditors(tmp)).toEqual(["copilot"]);
   });
 
-  it("detects the modern Agent Skills adopters", () => {
+  it("detects OpenCode", () => {
     fs.mkdirSync(path.join(tmp, ".opencode"));
-    fs.mkdirSync(path.join(tmp, ".codex"));
-    fs.mkdirSync(path.join(tmp, ".kiro"));
-    fs.mkdirSync(path.join(tmp, ".roo"));
-    expect(detectEditors(tmp)).toEqual(["opencode", "codex", "kiro", "roo"]);
+    expect(detectEditors(tmp)).toEqual(["opencode"]);
   });
 
-  it("never returns `agents` (it's always written as a baseline)", () => {
+  it("never returns `agents` (it's always written as a baseline, not user-selectable)", () => {
     fs.mkdirSync(path.join(tmp, ".agents"));
-    expect(detectEditors(tmp)).not.toContain("agents");
+    // `agents` is not part of the public Integration type, so detection
+    // must not surface it as an editor to install for.
+    expect(detectEditors(tmp) as readonly string[]).not.toContain("agents");
   });
 });
 
@@ -114,7 +113,7 @@ describe("install — canonical SKILL.md layout", () => {
   it("writes SKILL.md to every requested editor's project-local skills root", () => {
     install({
       repoRoot: tmp,
-      integrations: ["claude", "copilot", "cursor", "gemini", "opencode", "codex", "kiro", "roo", "factory"],
+      integrations: ["claude", "copilot", "cursor", "gemini", "opencode"],
       context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
       silent: true,
     });
@@ -125,10 +124,6 @@ describe("install — canonical SKILL.md layout", () => {
     expect(fs.existsSync(skill(".cursor/skills"))).toBe(true);
     expect(fs.existsSync(skill(".gemini/skills"))).toBe(true);
     expect(fs.existsSync(skill(".opencode/skills"))).toBe(true);
-    expect(fs.existsSync(skill(".codex/skills"))).toBe(true);
-    expect(fs.existsSync(skill(".kiro/skills"))).toBe(true);
-    expect(fs.existsSync(skill(".roo/skills"))).toBe(true);
-    expect(fs.existsSync(skill(".factory/skills"))).toBe(true);
   });
 
   it("never writes the legacy per-editor instruction files", () => {
@@ -206,5 +201,102 @@ describe("install — legacy migration", () => {
     });
     const removed = result.filter((r) => r.action === "removed");
     expect(removed).toHaveLength(0);
+  });
+
+  it("runs migration BEFORE the install step (so legacy files can't shadow new ones)", () => {
+    fs.mkdirSync(path.join(tmp, ".github", "instructions"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ".github", "instructions", "git-impact.instructions.md"), "legacy");
+
+    const result = install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+
+    // The InstalledFile[] array preserves operation order. A `removed`
+    // entry must appear BEFORE any `created` entry under a SKILL.md path.
+    const indexOfFirstRemove  = result.findIndex((r) => r.action === "removed");
+    const indexOfFirstCreate  = result.findIndex((r) => r.action === "created" && r.path.includes("SKILL.md"));
+    expect(indexOfFirstRemove).toBeGreaterThan(-1);
+    expect(indexOfFirstCreate).toBeGreaterThan(-1);
+    expect(indexOfFirstRemove).toBeLessThan(indexOfFirstCreate);
+  });
+});
+
+describe("install — CLAUDE.md guard", () => {
+  it("writes CLAUDE.md when `claude` is in integrations", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(true);
+  });
+
+  it("does NOT write CLAUDE.md for non-Claude integrations on a fresh repo", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["cursor"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(false);
+  });
+
+  it("DOES write CLAUDE.md for a non-claude integration when `.claude/` already exists", () => {
+    // A user who already has Claude Code configured (even though they're
+    // running init for a different editor today) should still get the
+    // CLAUDE.md block so Claude Code can find the skill later.
+    fs.mkdirSync(path.join(tmp, ".claude"));
+    install({
+      repoRoot: tmp,
+      integrations: ["cursor"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(true);
+  });
+});
+
+describe("SKILL.md frontmatter — strict-editor compatibility", () => {
+  it("description fits within OpenCode's 1024-char cap", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const content = fs.readFileSync(
+      path.join(tmp, ".claude", "skills", "git-impact", "SKILL.md"),
+      "utf-8"
+    );
+    const m = content.match(/description:\s*>\s*\n([\s\S]+?)\n---/);
+    expect(m, "description block not found in SKILL.md frontmatter").toBeTruthy();
+    const desc = m![1].replace(/\s+/g, " ").trim();
+    // OpenCode caps description at 1024 chars per their published Agent
+    // Skills docs. GitHub Copilot's name regex is strict but doesn't cap
+    // description — OpenCode is the tightest constraint.
+    expect(desc.length).toBeLessThanOrEqual(1024);
+  });
+
+  it("name matches the strict regex used by OpenCode + GitHub Copilot", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const content = fs.readFileSync(
+      path.join(tmp, ".claude", "skills", "git-impact", "SKILL.md"),
+      "utf-8"
+    );
+    const m = content.match(/^name:\s*(\S+)/m);
+    expect(m).toBeTruthy();
+    // lowercase letters/digits/hyphens, ≤64 chars, no leading/trailing/
+    // consecutive hyphens. Anything else and Copilot silently fails to
+    // register the skill.
+    expect(m![1]).toMatch(/^[a-z0-9](?!.*--)[a-z0-9-]{0,62}[a-z0-9]$/);
   });
 });

@@ -52,8 +52,8 @@ The wizard auto-detects which AI editors you already use and installs for them. 
   >
 
   Which AI editors should I install for? (comma-separated, or "all")
-  Options: claude, copilot, cursor, gemini, opencode, goose, amp, codex, kiro, roo, factory
-  (.agents/skills/ is always written — works with most modern editors)
+  Options: claude, copilot, cursor, gemini, opencode
+  (.agents/skills/ is always written — covers Goose, Amp, Codex, Letta, Roo)
   Detected in this repo: claude, cursor
   [press Enter to use detected]
   >
@@ -97,13 +97,13 @@ Once installed, just talk to your AI editor naturally:
 | `make a presentation for today` | Adds a bespoke shareable HTML page (opt-in) |
 | `set up context for this repo` | Re-runs the init questions inline |
 
-Works in any editor that supports the [Agent Skills](https://agentskills.io) format — including **Claude Code**, **Cursor**, **GitHub Copilot** (+ VS Code), **Gemini CLI**, **OpenCode**, **Goose**, **Amp**, **OpenAI Codex**, **Kiro**, **Roo Code**, **Factory**, and any future adopter that reads `.agents/skills/`. One canonical `SKILL.md` folder, mirrored to whichever editor-specific directories each vendor expects.
+Works in any editor that supports the [Agent Skills](https://agentskills.io) format. Five editors get a vendor-specific mirror (**Claude Code**, **Cursor**, **GitHub Copilot** + VS Code, **Gemini CLI**, **OpenCode**). Every other Agent Skills adopter — **Goose**, **Amp**, **OpenAI Codex**, **Letta**, **Roo Code**, and future ones — picks up the same skill from the cross-vendor `.agents/skills/` baseline that's always written. One canonical `SKILL.md` folder, mirrored where each vendor's docs say it needs to live.
 
 ---
 
 ## How it works
 
-git-impact ships two things: an [Agent Skills](https://agentskills.io)–compatible **skill** that handles the prompting (works in every adopter — Claude Code, Cursor, Copilot, Gemini CLI, OpenCode, Goose, Amp, Codex, Kiro, Roo, Factory, …), and an **MCP server** that exposes typed data tools (git activity, history, context). The skill calls the MCP tools — no `sqlite3` shelling, no hand-rolled SQL.
+git-impact ships two things: an [Agent Skills](https://agentskills.io)–compatible **skill** that handles the prompting (Claude Code, Cursor, Copilot, Gemini CLI, OpenCode get a vendor-specific mirror; Goose, Amp, Codex, Letta, Roo pick up the `.agents/skills/` baseline), and an **MCP server** that exposes typed data tools (git activity, history, context). The skill calls the MCP tools — no `sqlite3` shelling, no hand-rolled SQL.
 
 ```
 your commits  →  MCP get_git_activity  →  privacy redaction  →  AI translation
@@ -139,7 +139,8 @@ your-project/
 ├── .cursor/skills/git-impact/                  # …mirrored for Cursor
 ├── .github/skills/git-impact/                  # …mirrored for GitHub Copilot + VS Code
 ├── .gemini/skills/git-impact/                  # …mirrored for Gemini CLI
-├── (other detected editors: .opencode/, .codex/, .kiro/, .roo/, .factory/, …)
+├── .opencode/skills/git-impact/                # …mirrored for OpenCode
+│   (Goose, Amp, Codex, Letta, Roo — read from .agents/skills/ above, no mirror)
 ├── .git-impact/
 │   ├── context.json                            # Team glossary  ← commit this
 │   ├── manifest.json                           # Install record ← commit this
@@ -352,7 +353,7 @@ Shipped:
 - [x] Editor auto-detection in init
 - [x] Test baseline (Vitest, 40 tests)
 - [x] Multi-editor: Claude Code, Copilot, Cursor, Gemini CLI
-- [x] Canonical SKILL.md format ([Agent Skills](https://agentskills.io)) — works in OpenCode, Goose, Amp, Codex, Kiro, Roo, Factory, and any future adopter
+- [x] Canonical SKILL.md format ([Agent Skills](https://agentskills.io)) — vendor mirrors for OpenCode; `.agents/` baseline picked up by Goose, Amp, Codex, Letta, Roo
 - [x] Auto-migration from pre-0.7 per-editor instruction files
 
 Next:

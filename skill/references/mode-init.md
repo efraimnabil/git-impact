@@ -11,5 +11,6 @@ Then call **`update_context`** with the answers. Tell the user:
 *"Saved to `.git-impact/context.json`. Commit this to share the glossary with your team."*
 
 If the install also wrote SKILL.md folders for other editors (Cursor,
-Copilot, Gemini, OpenCode, Goose, Amp, Codex, Kiro, Roo, Factory, …),
-point that out so they know the same workflow works elsewhere.
+Copilot, Gemini, OpenCode, and any Agent Skills adopter that reads
+`.agents/skills/` — Goose, Amp, Codex, Letta, Roo), point that out so
+they know the same workflow works elsewhere.

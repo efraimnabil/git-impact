@@ -20,27 +20,33 @@ function shippedSkillDir(): string {
 // ─── Editor catalog ───────────────────────────────────────────────────────────
 
 /**
- * Every editor we know how to install for, with the project-local directory
- * it reads SKILL.md folders from (per each vendor's published Agent Skills
- * docs as of 2026-05). Adding a new editor here is a one-line change.
+ * Editors with verified Agent Skills install paths (per each vendor's
+ * published docs as of 2026-05). Adding a new editor here is a one-line
+ * change in EDITOR_PATHS below.
  *
- * `agents` is the cross-vendor standard path (`.agents/skills/`) — most
- * modern Agent Skills adopters read it, so it's always written as a
- * baseline.
+ * Goose, Amp, OpenAI Codex, and Letta are NOT listed here because their
+ * docs point at the cross-vendor `.agents/skills/` baseline as the
+ * recommended project-local path — they're covered by the always-on
+ * baseline install, no vendor-specific mirror needed.
+ *
+ * Kiro, Roo, and Factory have vendor-specific dirs (`.kiro/`, `.roo/`,
+ * `.factory/`) that were not personally verified by the author. They
+ * may be added in a follow-up once each has been confirmed with a live
+ * install in the target editor.
  */
 export type Integration =
-  | "agents"
   | "claude"
   | "copilot"
   | "cursor"
   | "gemini"
-  | "opencode"
-  | "goose"
-  | "amp"
-  | "codex"
-  | "kiro"
-  | "roo"
-  | "factory";
+  | "opencode";
+
+/**
+ * Internal target type — same as Integration plus the always-on baseline.
+ * `agents` writes to `.agents/skills/` (cross-vendor standard read by
+ * Goose, Amp, Codex, Letta, Roo, and most modern Agent Skills adopters).
+ */
+type Target = Integration | "agents";
 
 interface EditorSpec {
   /** Project-local directory that the editor scans for `<name>/SKILL.md`. */
@@ -49,22 +55,16 @@ interface EditorSpec {
   detectDir: string;
 }
 
-const EDITORS: Record<Integration, EditorSpec> = {
+const EDITOR_PATHS: Record<Target, EditorSpec> = {
   agents:   { skillsRoot: ".agents/skills",   detectDir: ".agents"   },
   claude:   { skillsRoot: ".claude/skills",   detectDir: ".claude"   },
   copilot:  { skillsRoot: ".github/skills",   detectDir: ".github"   },
   cursor:   { skillsRoot: ".cursor/skills",   detectDir: ".cursor"   },
   gemini:   { skillsRoot: ".gemini/skills",   detectDir: ".gemini"   },
   opencode: { skillsRoot: ".opencode/skills", detectDir: ".opencode" },
-  goose:    { skillsRoot: ".goose/skills",    detectDir: ".goose"    },
-  amp:      { skillsRoot: ".amp/skills",      detectDir: ".amp"      },
-  codex:    { skillsRoot: ".codex/skills",    detectDir: ".codex"    },
-  kiro:     { skillsRoot: ".kiro/skills",     detectDir: ".kiro"     },
-  roo:      { skillsRoot: ".roo/skills",      detectDir: ".roo"      },
-  factory:  { skillsRoot: ".factory/skills",  detectDir: ".factory"  },
 };
 
-const ALL_INTEGRATIONS: Integration[] = Object.keys(EDITORS) as Integration[];
+const ALL_EDITORS: Integration[] = ["claude", "copilot", "cursor", "gemini", "opencode"];
 
 const SKILL_NAME = "git-impact";
 
@@ -122,15 +122,21 @@ export function install(opts: InstallOptions): InstalledFile[] {
   installed.push(ensureGitignore(repoRoot));
 
   // 3. Install the SKILL.md folder once per requested editor. `agents` is
-  //    always included as a cross-vendor baseline.
-  const targets = dedupe(["agents", ...integrations] as Integration[]);
-  for (const integration of targets) {
-    installed.push(...installSkillFolder(repoRoot, integration));
+  //    always included as a cross-vendor baseline (covers Goose/Amp/Codex/
+  //    Letta/Roo and most modern Agent Skills adopters).
+  const targets: Target[] = dedupe(["agents", ...integrations]);
+  for (const target of targets) {
+    installed.push(...installSkillFolder(repoRoot, target));
   }
 
-  // 4. Always write CLAUDE.md — it's the most-used editor's discovery
-  //    surface, and the block is harmless for non-Claude users.
-  installed.push(updateClaudeMd(repoRoot));
+  // 4. Write CLAUDE.md when Claude Code is actually in scope. Detection
+  //    matters because a Cursor-only user shouldn't get a top-level
+  //    CLAUDE.md they didn't ask for; conversely, a user who later
+  //    installs Claude Code should get the block on their next init
+  //    even if `claude` wasn't passed explicitly.
+  if (integrations.includes("claude") || fs.existsSync(path.join(repoRoot, ".claude"))) {
+    installed.push(updateClaudeMd(repoRoot));
+  }
 
   // 5. Write manifest
   const manifest = {
@@ -149,13 +155,11 @@ export function install(opts: InstallOptions): InstalledFile[] {
 
 // ─── Skill folder install ─────────────────────────────────────────────────────
 
-function installSkillFolder(repoRoot: string, integration: Integration): InstalledFile[] {
-  const spec = EDITORS[integration];
+function installSkillFolder(repoRoot: string, target: Target): InstalledFile[] {
+  const spec = EDITOR_PATHS[target];
   const destDir = path.join(repoRoot, spec.skillsRoot, SKILL_NAME);
-  fs.mkdirSync(destDir, { recursive: true });
-
-  const src = shippedSkillDir();
-  return copyTree(src, destDir);
+  // copyTree itself creates `destDir` recursively — no need to pre-create.
+  return copyTree(shippedSkillDir(), destDir);
 }
 
 /** Recursively mirror `src` → `dest`. Returns one InstalledFile per file copied. */
@@ -274,9 +278,8 @@ function ensureGitignore(repoRoot: string): InstalledFile {
  * return value.
  */
 export function detectEditors(repoRoot: string): Integration[] {
-  return ALL_INTEGRATIONS.filter((id) => {
-    if (id === "agents") return false;
-    const dir = EDITORS[id].detectDir;
+  return ALL_EDITORS.filter((id) => {
+    const dir = EDITOR_PATHS[id].detectDir;
     return fs.existsSync(path.join(repoRoot, dir));
   });
 }
@@ -324,7 +327,6 @@ export async function runInitWizard(repoRoot: string): Promise<{
   );
 
   const detected = detectEditors(repoRoot);
-  const editorOptions = ALL_INTEGRATIONS.filter((i) => i !== "agents");
   const detectedLabel =
     detected.length > 0
       ? detected.join(", ")
@@ -332,8 +334,8 @@ export async function runInitWizard(repoRoot: string): Promise<{
 
   const integrationsInput = await ask(
     `\n  Which AI editors should I install for? (comma-separated, or "all")\n` +
-    `  Options: ${editorOptions.join(", ")}\n` +
-    `  (.agents/skills/ is always written — works with most modern editors)\n` +
+    `  Options: ${ALL_EDITORS.join(", ")}\n` +
+    `  (.agents/skills/ is always written — covers Goose, Amp, Codex, Letta, Roo)\n` +
     `  Detected in this repo: ${detectedLabel}\n` +
     `  [press Enter to use detected]\n` +
     `  > `
@@ -356,12 +358,13 @@ export async function runInitWizard(repoRoot: string): Promise<{
   if (!raw) {
     integrations = detected.length > 0 ? detected : ["claude"];
   } else if (raw === "all") {
-    integrations = editorOptions;
+    integrations = ALL_EDITORS;
   } else {
+    const validIds = new Set<string>(ALL_EDITORS);
     integrations = raw
       .split(",")
-      .map((s) => s.trim() as Integration)
-      .filter((s) => ALL_INTEGRATIONS.includes(s) && s !== "agents");
+      .map((s) => s.trim())
+      .filter((s) => validIds.has(s)) as Integration[];
     if (integrations.length === 0) integrations = detected.length > 0 ? detected : ["claude"];
   }
 
