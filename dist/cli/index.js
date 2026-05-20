@@ -45,7 +45,7 @@ const program = new commander_1.Command();
 program
     .name("git-impact")
     .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-    .version("0.6.6");
+    .version("0.7.0");
 // ─── init ─────────────────────────────────────────────────────────────────────
 program
     .command("init")
@@ -65,7 +65,10 @@ program
     console.log(`  git-impact installed\n`);
     for (const f of installed) {
         const rel = path.relative(repoRoot, f.path);
-        const icon = f.action === "created" ? "✅" : f.action === "updated" ? "🔄" : "⏭️ ";
+        const icon = f.action === "created" ? "✅" :
+            f.action === "updated" ? "🔄" :
+                f.action === "removed" ? "🗑️ " :
+                    "⏭️ ";
         console.log(`  ${icon}  ${rel}`);
     }
     // Editor-aware next-step hint based on what we actually installed.
@@ -73,7 +76,8 @@ program
         integrations.includes("gemini") ? `In Gemini CLI: run "/git-impact" (or say "do my standup")` :
             integrations.includes("cursor") ? `In Cursor chat: paste "@git-impact do my standup"` :
                 integrations.includes("copilot") ? `In Copilot Chat: open this repo and say "do my standup"` :
-                    `Open this repo in your AI editor and say "do my standup"`;
+                    integrations.includes("opencode") ? `In OpenCode: open this repo and say "do my standup"` :
+                        `Open this repo in your AI editor and say "do my standup"`;
     console.log(`\n  Next steps:`);
     console.log(`  1. git add .git-impact/context.json && git commit -m "chore: add git-impact"`);
     console.log(`  2. ${trigger}`);
