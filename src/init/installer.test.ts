@@ -110,6 +110,76 @@ describe("install — canonical SKILL.md layout", () => {
     expect(matches.length).toBe(1);
   });
 
+  it("gitignores all regenerable per-machine files, not just history.db", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const gitignore = fs.readFileSync(path.join(tmp, ".gitignore"), "utf-8");
+    expect(gitignore).toContain(".git-impact/history.db");
+    expect(gitignore).toContain(".git-impact/result.html");
+    expect(gitignore).toContain(".git-impact/standups/");
+  });
+
+  it("fills in missing gitignore entries on re-run without duplicating existing ones", () => {
+    // Simulate a repo whose .gitignore already lists only history.db (the
+    // pre-0.7.1 installer's single entry). The re-run should append the two
+    // newly-tracked entries without re-adding history.db.
+    fs.writeFileSync(
+      path.join(tmp, ".gitignore"),
+      "node_modules/\n.git-impact/history.db\n"
+    );
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const gitignore = fs.readFileSync(path.join(tmp, ".gitignore"), "utf-8");
+    expect((gitignore.match(/\.git-impact\/history\.db/g) ?? []).length).toBe(1);
+    expect(gitignore).toContain(".git-impact/result.html");
+    expect(gitignore).toContain(".git-impact/standups/");
+  });
+
+  it("includes manifest.json in the install summary so the CLI reports it", () => {
+    const installed = install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const manifestEntry = installed.find((f) => f.path.endsWith("manifest.json"));
+    expect(manifestEntry).toBeDefined();
+    expect(manifestEntry?.action).toBe("created");
+
+    // Re-running should report it as updated rather than created again.
+    const second = install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    expect(second.find((f) => f.path.endsWith("manifest.json"))?.action).toBe("updated");
+  });
+
+  it("writes the published package version into the manifest (no drift)", () => {
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(tmp, ".git-impact", "manifest.json"), "utf-8")
+    );
+    const pkg = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, "..", "..", "package.json"), "utf-8")
+    );
+    expect(manifest.version).toBe(pkg.version);
+  });
+
   it("writes SKILL.md to every requested editor's project-local skills root", () => {
     install({
       repoRoot: tmp,
@@ -136,6 +206,60 @@ describe("install — canonical SKILL.md layout", () => {
     expect(fs.existsSync(path.join(tmp, ".github", "instructions", "git-impact.instructions.md"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".cursor", "rules", "git-impact.mdc"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".gemini", "commands", "git-impact.md"))).toBe(false);
+  });
+});
+
+describe("install — preserves on-disk context fields the wizard doesn't collect", () => {
+  it("keeps an existing githubToken across a re-run of init", () => {
+    fs.mkdirSync(path.join(tmp, ".git-impact"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".git-impact", "context.json"),
+      JSON.stringify({
+        companyDescription: "old",
+        managerPriorities: "old",
+        glossary: {},
+        githubToken: "ghp_secret_from_previous_init",
+      }) + "\n"
+    );
+
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "new", managerPriorities: "new", glossary: {} },
+      silent: true,
+    });
+
+    const written = JSON.parse(
+      fs.readFileSync(path.join(tmp, ".git-impact", "context.json"), "utf-8")
+    );
+    expect(written.githubToken).toBe("ghp_secret_from_previous_init");
+    expect(written.companyDescription).toBe("new");
+    expect(written.managerPriorities).toBe("new");
+  });
+
+  it("keeps an existing privacy block across a re-run of init", () => {
+    fs.mkdirSync(path.join(tmp, ".git-impact"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".git-impact", "context.json"),
+      JSON.stringify({
+        companyDescription: "X",
+        managerPriorities: "Y",
+        glossary: {},
+        privacy: { redact: false },
+      }) + "\n"
+    );
+
+    install({
+      repoRoot: tmp,
+      integrations: ["claude"],
+      context: { companyDescription: "X", managerPriorities: "Y", glossary: {} },
+      silent: true,
+    });
+
+    const written = JSON.parse(
+      fs.readFileSync(path.join(tmp, ".git-impact", "context.json"), "utf-8")
+    );
+    expect(written.privacy).toEqual({ redact: false });
   });
 });
 

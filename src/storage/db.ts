@@ -14,7 +14,6 @@ import * as fs from "fs";
 const GIT_IMPACT_DIR = ".git-impact";
 const CONTEXT_FILE = "context.json";
 const HISTORY_FILE = "history.db";
-const GITIGNORE_ENTRY = ".git-impact/history.db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +71,6 @@ function getDb(repoRoot: string): Database.Database {
 
   const dir = gitImpactDir(repoRoot);
   fs.mkdirSync(dir, { recursive: true });
-  ensureGitignore(repoRoot);
 
   const db = new Database(path.join(dir, HISTORY_FILE));
 
@@ -146,7 +144,6 @@ export function loadContext(repoRoot: string): UserContext | null {
 export function saveContext(ctx: UserContext, repoRoot: string): void {
   const dir = gitImpactDir(repoRoot);
   fs.mkdirSync(dir, { recursive: true });
-  ensureGitignore(repoRoot);
   fs.writeFileSync(
     path.join(dir, CONTEXT_FILE),
     JSON.stringify(ctx, null, 2) + "\n",
@@ -213,18 +210,6 @@ export function getEntriesForDaysAgo(days: number, repoRoot: string): ImpactEntr
 
 function gitImpactDir(repoRoot: string): string {
   return path.join(repoRoot, GIT_IMPACT_DIR);
-}
-
-/** Add history.db to .gitignore automatically — only the DB, not context.json */
-function ensureGitignore(repoRoot: string): void {
-  const gitignorePath = path.join(repoRoot, ".gitignore");
-  const existing = fs.existsSync(gitignorePath)
-    ? fs.readFileSync(gitignorePath, "utf-8")
-    : "";
-  if (!existing.includes(GITIGNORE_ENTRY)) {
-    const addition = `\n# git-impact local history (private, per-machine)\n${GITIGNORE_ENTRY}\n`;
-    fs.appendFileSync(gitignorePath, addition, "utf-8");
-  }
 }
 
 function rowToEntry(row: Record<string, unknown>): ImpactEntry {

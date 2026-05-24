@@ -29,3 +29,6 @@ Thumbs.db
 # git-impact's own per-machine standup HTML in this repo
 .git-impact/result.html
 .git-impact/standups/
+
+# git-impact local history (private, per-machine)
+.git-impact/history.db

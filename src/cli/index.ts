@@ -7,12 +7,15 @@ import { resolveRepoPath } from "../mcp/repo";
 import { install, runInitWizard } from "../init/installer";
 import { renderReport } from "../report/render";
 
+// __dirname is dist/cli/ at runtime → ../../package.json is the package root.
+const { version: PKG_VERSION } = require(path.resolve(__dirname, "..", "..", "package.json"));
+
 const program = new Command();
 
 program
   .name("git-impact")
   .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-  .version("0.7.0");
+  .version(PKG_VERSION);
 
 // ─── init ─────────────────────────────────────────────────────────────────────
 

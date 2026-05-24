@@ -41,11 +41,13 @@ const db_1 = require("../storage/db");
 const repo_1 = require("../mcp/repo");
 const installer_1 = require("../init/installer");
 const render_1 = require("../report/render");
+// __dirname is dist/cli/ at runtime → ../../package.json is the package root.
+const { version: PKG_VERSION } = require(path.resolve(__dirname, "..", "..", "package.json"));
 const program = new commander_1.Command();
 program
     .name("git-impact")
     .description("Install git-impact into a repo. Translation runs inside your AI editor (Claude Code skill / MCP) — no API key.")
-    .version("0.7.0");
+    .version(PKG_VERSION);
 // ─── init ─────────────────────────────────────────────────────────────────────
 program
     .command("init")

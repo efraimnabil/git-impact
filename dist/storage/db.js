@@ -56,7 +56,6 @@ const fs = __importStar(require("fs"));
 const GIT_IMPACT_DIR = ".git-impact";
 const CONTEXT_FILE = "context.json";
 const HISTORY_FILE = "history.db";
-const GITIGNORE_ENTRY = ".git-impact/history.db";
 // ─── DB (per-repo, cached by repo root) ──────────────────────────────────────
 const _dbs = new Map();
 function getDb(repoRoot) {
@@ -64,7 +63,6 @@ function getDb(repoRoot) {
         return _dbs.get(repoRoot);
     const dir = gitImpactDir(repoRoot);
     fs.mkdirSync(dir, { recursive: true });
-    ensureGitignore(repoRoot);
     const db = new better_sqlite3_1.default(path.join(dir, HISTORY_FILE));
     db.exec(`
     CREATE TABLE IF NOT EXISTS impact_entries (
@@ -131,7 +129,6 @@ function loadContext(repoRoot) {
 function saveContext(ctx, repoRoot) {
     const dir = gitImpactDir(repoRoot);
     fs.mkdirSync(dir, { recursive: true });
-    ensureGitignore(repoRoot);
     fs.writeFileSync(path.join(dir, CONTEXT_FILE), JSON.stringify(ctx, null, 2) + "\n", "utf-8");
 }
 // ─── Entries ──────────────────────────────────────────────────────────────────
@@ -183,17 +180,6 @@ function getEntriesForDaysAgo(days, repoRoot) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function gitImpactDir(repoRoot) {
     return path.join(repoRoot, GIT_IMPACT_DIR);
-}
-/** Add history.db to .gitignore automatically — only the DB, not context.json */
-function ensureGitignore(repoRoot) {
-    const gitignorePath = path.join(repoRoot, ".gitignore");
-    const existing = fs.existsSync(gitignorePath)
-        ? fs.readFileSync(gitignorePath, "utf-8")
-        : "";
-    if (!existing.includes(GITIGNORE_ENTRY)) {
-        const addition = `\n# git-impact local history (private, per-machine)\n${GITIGNORE_ENTRY}\n`;
-        fs.appendFileSync(gitignorePath, addition, "utf-8");
-    }
 }
 function rowToEntry(row) {
     return {

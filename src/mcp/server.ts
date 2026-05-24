@@ -27,10 +27,15 @@ import { TOOL_DEFINITIONS, handleTool } from "./tools.js";
 import { RESOURCE_DEFINITIONS, handleReadResource } from "./resources.js";
 import { PROMPT_DEFINITIONS, handleGetPrompt } from "./prompts.js";
 
+import * as path from "path";
+// Read version from package.json so it never drifts from the published package.
+// __dirname is dist/mcp/ at runtime → ../../package.json is the package root.
+const { version: PKG_VERSION } = require(path.resolve(__dirname, "..", "..", "package.json"));
+
 // ─── Server setup ────────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "git-impact", version: "0.1.0" },
+  { name: "git-impact", version: PKG_VERSION },
   {
     capabilities: {
       tools: {},

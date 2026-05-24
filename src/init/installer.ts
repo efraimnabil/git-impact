@@ -6,6 +6,11 @@ import {
   CONTEXT_TEMPLATE,
 } from "./templates";
 
+// Read version from package.json so the manifest never drifts from the
+// published package. __dirname is dist/init/ at runtime → ../../package.json
+// is the package root.
+const { version: PKG_VERSION } = require(path.resolve(__dirname, "..", "..", "package.json"));
+
 /**
  * The shipped `skill/` directory inside the published npm package.
  * Resolved relative to this file's location at runtime — works whether
@@ -111,14 +116,18 @@ export function install(opts: InstallOptions): InstalledFile[] {
   const gitImpactDir = path.join(repoRoot, ".git-impact");
   fs.mkdirSync(gitImpactDir, { recursive: true });
 
+  // Merge the wizard's inputs into whatever's already on disk so that
+  // optional fields the wizard never collects (githubToken, privacy, …)
+  // survive a re-run of `init`.
   const contextPath = path.join(gitImpactDir, "context.json");
-  installed.push(
-    writeFile(contextPath, CONTEXT_TEMPLATE(
-      context.companyDescription,
-      context.managerPriorities,
-      context.glossary
-    ))
-  );
+  const existingContext = loadExistingContext(repoRoot) ?? {};
+  const mergedContext = {
+    ...existingContext,
+    companyDescription: context.companyDescription,
+    managerPriorities: context.managerPriorities,
+    glossary: context.glossary,
+  };
+  installed.push(writeFile(contextPath, CONTEXT_TEMPLATE(mergedContext)));
 
   // 2. Update .gitignore
   installed.push(ensureGitignore(repoRoot));
@@ -140,16 +149,22 @@ export function install(opts: InstallOptions): InstalledFile[] {
     installed.push(updateClaudeMd(repoRoot));
   }
 
-  // 5. Write manifest
+  // 5. Write manifest. Push the manifest entry into `installed` before
+  //    writing so the CLI summary reports it, and so the manifest's own
+  //    file list includes itself (self-referential is fine — anyone
+  //    inspecting it expects to see every file the installer touched).
+  const manifestPath = path.join(gitImpactDir, "manifest.json");
+  const manifestExisted = fs.existsSync(manifestPath);
+  installed.push({ path: manifestPath, action: manifestExisted ? "updated" : "created" });
+
   const manifest = {
-    version: "0.7.0",
+    version: PKG_VERSION,
     installedAt: new Date().toISOString(),
     integrations: targets,
     files: installed
       .filter((f) => f.action !== "removed")
       .map((f) => path.relative(repoRoot, f.path)),
   };
-  const manifestPath = path.join(gitImpactDir, "manifest.json");
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
   return installed;
@@ -249,23 +264,31 @@ function updateClaudeMd(repoRoot: string): InstalledFile {
 
 // ─── .gitignore ───────────────────────────────────────────────────────────────
 
-const GITIGNORE_ENTRY = ".git-impact/history.db";
+/**
+ * Files git-impact writes locally that should never be committed:
+ *  - history.db: per-machine SQLite history
+ *  - result.html: regenerable rolling dashboard
+ *  - standups/: opt-in per-day shareable HTML pages
+ */
+const GITIGNORE_ENTRIES = [
+  ".git-impact/history.db",
+  ".git-impact/result.html",
+  ".git-impact/standups/",
+];
 
 function ensureGitignore(repoRoot: string): InstalledFile {
   const gitignorePath = path.join(repoRoot, ".gitignore");
-  const existing = fs.existsSync(gitignorePath)
-    ? fs.readFileSync(gitignorePath, "utf-8")
-    : "";
+  const existed = fs.existsSync(gitignorePath);
+  const existing = existed ? fs.readFileSync(gitignorePath, "utf-8") : "";
 
-  if (existing.includes(GITIGNORE_ENTRY)) {
+  const missing = GITIGNORE_ENTRIES.filter((entry) => !existing.includes(entry));
+  if (missing.length === 0) {
     return { path: gitignorePath, action: "skipped" };
   }
 
-  fs.appendFileSync(
-    gitignorePath,
-    `\n# git-impact local history (private, per-machine)\n${GITIGNORE_ENTRY}\n`
-  );
-  return { path: gitignorePath, action: "updated" };
+  const header = `\n# git-impact local files (private, per-machine)\n`;
+  fs.appendFileSync(gitignorePath, header + missing.join("\n") + "\n");
+  return { path: gitignorePath, action: existed ? "updated" : "created" };
 }
 
 // ─── Editor auto-detection ───────────────────────────────────────────────────

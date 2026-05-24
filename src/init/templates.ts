@@ -30,13 +30,10 @@ History is stored in \`.git-impact/history.db\` (gitignored, per-machine).
 
 // ─── context.json template ────────────────────────────────────────────────────
 
-export const CONTEXT_TEMPLATE = (
-  companyDescription: string,
-  managerPriorities: string,
-  glossary: Record<string, string>
-): string =>
-  JSON.stringify(
-    { companyDescription, managerPriorities, glossary },
-    null,
-    2
-  ) + "\n";
+/**
+ * Serialize the full UserContext to context.json. Pre-existing optional fields
+ * (githubToken, privacy, …) flow through verbatim so a re-run of `init` never
+ * drops state that wasn't collected by the wizard.
+ */
+export const CONTEXT_TEMPLATE = (ctx: object): string =>
+  JSON.stringify(ctx, null, 2) + "\n";
