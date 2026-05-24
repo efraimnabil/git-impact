@@ -39,7 +39,8 @@ export type Integration =
   | "copilot"
   | "cursor"
   | "gemini"
-  | "opencode";
+  | "opencode"
+  | "antigravity";
 
 /**
  * Internal target type — same as Integration plus the always-on baseline.
@@ -56,15 +57,16 @@ interface EditorSpec {
 }
 
 const EDITOR_PATHS: Record<Target, EditorSpec> = {
-  agents:   { skillsRoot: ".agents/skills",   detectDir: ".agents"   },
-  claude:   { skillsRoot: ".claude/skills",   detectDir: ".claude"   },
-  copilot:  { skillsRoot: ".github/skills",   detectDir: ".github"   },
-  cursor:   { skillsRoot: ".cursor/skills",   detectDir: ".cursor"   },
-  gemini:   { skillsRoot: ".gemini/skills",   detectDir: ".gemini"   },
-  opencode: { skillsRoot: ".opencode/skills", detectDir: ".opencode" },
+  agents:      { skillsRoot: ".agents/skills",      detectDir: ".agents"      },
+  claude:      { skillsRoot: ".claude/skills",      detectDir: ".claude"      },
+  copilot:     { skillsRoot: ".github/skills",      detectDir: ".github"      },
+  cursor:      { skillsRoot: ".cursor/skills",      detectDir: ".cursor"      },
+  gemini:      { skillsRoot: ".gemini/skills",      detectDir: ".gemini"      },
+  opencode:    { skillsRoot: ".opencode/skills",    detectDir: ".opencode"    },
+  antigravity: { skillsRoot: ".antigravity/skills", detectDir: ".antigravity" },
 };
 
-const ALL_EDITORS: Integration[] = ["claude", "copilot", "cursor", "gemini", "opencode"];
+const ALL_EDITORS: Integration[] = ["claude", "copilot", "cursor", "gemini", "opencode", "antigravity"];
 
 const SKILL_NAME = "git-impact";
 

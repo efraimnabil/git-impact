@@ -15,8 +15,9 @@ export const CLAUDE_MD_BLOCK = `
 This repo uses [git-impact](https://github.com/efraimnafady/git-impact) for
 standup and performance review generation. The skill works in any editor that
 supports the [Agent Skills](https://agentskills.io) format — Claude Code,
-Cursor, GitHub Copilot, Gemini CLI, OpenCode get vendor-specific mirrors;
-Goose, Amp, Codex, Letta, Roo pick up the same skill from \`.agents/skills/\`.
+Cursor, GitHub Copilot, Gemini CLI, OpenCode, and Antigravity get
+vendor-specific mirrors; Goose, Amp, Codex, Letta, Roo pick up the same skill
+from \`.agents/skills/\`.
 
 - Say **"do my standup"** to translate today's commits into business impact
 - Say **"git-impact since 3d"** to look back further
