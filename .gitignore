@@ -32,3 +32,9 @@ Thumbs.db
 
 # git-impact local history (private, per-machine)
 .git-impact/history.db
+
+# Dogfood: git-impact installed into its own source repo (per-machine artifacts)
+.agents/
+.claude/
+.git-impact/manifest.json
+CLAUDE.md
