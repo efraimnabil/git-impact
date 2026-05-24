@@ -245,7 +245,13 @@ All commands accept `-p <path>` to point at a different repo. By default the rep
 
 The MCP server exposes git data as typed tools so AI editors can call them directly. No API key — your editor does the translation in its own session.
 
-Add to `.claude/settings.json` in your project:
+The skill folder gets installed automatically by `npx git-impact init`, but the MCP server has to be registered in your editor's MCP config separately — otherwise the skill loads but `save_impact_entry` / `render_dashboard` aren't callable and nothing persists. Same JSON block everywhere, just different file paths:
+
+| Editor | Config file |
+|---|---|
+| Claude Code | `./.claude/settings.json` (per-repo) |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` (user-global) |
+| Other editors | See your editor's MCP setup docs — the block below works for any stdio MCP host |
 
 ```json
 {
@@ -258,7 +264,7 @@ Add to `.claude/settings.json` in your project:
 }
 ```
 
-Available tools:
+Restart the editor after editing the config. Available tools:
 
 | Tool | What it does |
 |---|---|
